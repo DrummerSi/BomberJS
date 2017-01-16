@@ -1,0 +1,362 @@
+﻿/*
+ * ========================================================================
+ * 1. Global styles
+ * ========================================================================
+ */
+
+html, body {
+	height: 100vh;
+	overflow: hidden;
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	padding: 10px;
+	-webkit-backface-visibility: hidden;
+	backface-visibility:hidden;
+}
+
+#header {
+	height: 10vh;
+}
+
+#container {
+	height: 90vh;
+	width: 100vw;
+	position: relative;
+}
+
+#side, #main {
+	display: inline-block;
+	float: left;
+	height: 90vh;
+	padding-right: 20px;
+}
+
+#side {
+	width: 20vw;
+}
+
+#main {
+	width: 80vw;
+}
+
+#main > .well {
+	height: 85vmin;
+}
+
+#game {
+	width: 100%;
+	height: 100%;
+}
+
+	#game > canvas {
+		border-radius: 3px;
+		margin-top: 0 !important;
+		margin-bottom: 0 !important;
+	}
+
+
+/*
+ * ========================================================================
+ * 2. Popup layer / main menu
+ * ========================================================================
+ */
+.popup-layer {
+	position: absolute;
+	display: none;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 1;
+	background-color: rgba(0,0,0,.2);
+}
+
+.popup-layer-content {
+	position: absolute;
+	box-shadow: 0 0 22px rgba(0,0,0,.4);
+}
+
+.popup-layer-blur {
+	-webkit-filter: blur(3px);
+	filter:blur(3px);
+}
+
+.mainMenuContainer {
+	padding: 20px;
+	text-align: center;
+}
+
+.mainMenuContainer #mainMenuLogo {
+	margin: 0 auto;
+	padding-bottom: 20px;
+	max-width: 100px;
+}
+
+.mainMenuContainer .mainMenuSquareButtons > div {
+	padding: 0;
+}
+
+
+/*
+ * ========================================================================
+ * 3. Side information. Player list/ Timer/ Chat
+ * ========================================================================
+ */
+
+#countdown {
+	font-family: 'Digital-7Mono';
+	position: relative;
+	padding: 0px;
+	font-size: 48px;
+	text-align: center;
+}
+#countdown::after {
+	/* LCD effect */
+	content: '';
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background-image: -webkit-linear-gradient(bottom, rgba(255, 255, 255, 0.2) 33.33333%, rgba(255, 255, 255, 0.4) 33.33333%, rgba(255, 255, 255, 0.4) 66.66666%, rgba(255, 255, 255, 0.6) 66.66666%), -webkit-linear-gradient(left, rgba(255, 0, 0, 0.7) 33.33333%, rgba(0, 255, 0, 0.7) 33.33333%, rgba(0, 255, 0, 0.7) 66.66666%, rgba(0, 0, 255, 0.7) 66.66666%);
+	background-image: linear-gradient(to top, rgba(255, 255, 255, 0.2) 33.33333%, rgba(255, 255, 255, 0.4) 33.33333%, rgba(255, 255, 255, 0.4) 66.66666%, rgba(255, 255, 255, 0.6) 66.66666%), linear-gradient(to right, rgba(255, 0, 0, 0.7) 33.33333%, rgba(0, 255, 0, 0.7) 33.33333%, rgba(0, 255, 0, 0.7) 66.66666%, rgba(0, 0, 255, 0.7) 66.66666%);
+	background-size: 3px 3px;
+	mix-blend-mode: multiply;
+}
+
+#players .media {
+	padding-bottom: 4px;
+	border-bottom: 1px solid #6E6E6E;
+}
+#players .media-left img {
+	width: 50px;
+}
+#players h4 {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+#players ul.trophies {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+#players ul.trophies li {
+	display: inline-block;
+}
+#players ul.trophies li i {	
+	color: #959595
+}
+
+#players ul.trophies li i.won {
+	color: #FFFF00
+}
+
+
+
+/*
+ * ========================================================================
+ * 4. Lobby screen
+ * ========================================================================
+ */
+#lobby {
+    position: absolute;
+    top: 30%;
+    left: 20%;
+    right: 20%;
+    bottom: 10%;
+}
+
+#lobby .modal-dialog {
+    width: auto !important;
+    margin: 0 !important;
+    height: 100%;
+}
+
+#lobby .modal-content {
+    height: 100%;
+}
+
+#lobby .modal-footer {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    left: 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+/*misc*/
+.modal-body div#perfectScroll {
+	position: relative;
+	max-height: 80vh;
+	overflow-y: auto;
+	padding-right: 20px;
+}
+
+
+
+
+
+
+
+/*
+html, body {
+	padding: 0;
+	margin: 0;
+	width: 100%;
+	height: 100%;
+    min-height: 100%;
+	overflow: hidden;
+    background: #000;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: "Baloo Tamma";
+}
+
+#content {
+    width: 100%;
+	height: 100%;
+    min-height: 100%;
+}
+
+
+#ui-container {
+    position: absolute;
+    margin-top: auto;
+    margin-bottom: auto;
+    margin-left: auto;
+    margin-right: auto;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+}
+
+#ui-scaler {
+	position: relative;
+	height: 100%;
+	width: 100%;
+}
+
+.ui-block {
+    display: block;
+    background: rgba(0,0,0,.5);
+    color: white;
+    text-shadow: rgba( 0, 0, 0, 1 ) 0px 1px 2px;
+    border-radius: 5px;
+    line-height: 1.1em;
+    font-family: "Baloo Tamma";
+}
+
+#ui-start-menu {
+    position: absolute;
+    top: 30%;
+    width: 80%;
+    height: 60%;
+    margin-left: auto;
+    margin-right: auto;
+    left: 10%;
+    padding: 20px;
+	overflow: hidden;
+}
+
+#ui-lobby {
+	position: absolute;
+    top: 30%;
+    width: 80%;
+    height: 60%;
+    margin-left: auto;
+    margin-right: auto;
+    left: 10%;
+    padding: 20px;
+	overflow: hidden;
+}
+
+#lobby-connections {
+	text-align: center;
+}
+
+.lobby-player-container {
+	position:relative;
+	width: calc(100% + 2px);
+	background-color: #EEEEEE;
+	border-radius: 50%;
+	border: 6px solid transparent;
+}
+.lobby-player-container:before {
+	content: "";
+	display: block;
+	padding-top: 100%;
+}
+.lobby-player-container.selected {
+	border-color: #f9be03;
+    box-shadow: inset 0px 0px 10px 0px #f9be03;
+}
+.lobby-player-container.remote {
+	border-color: black;
+}
+
+.lobby-player-container .player1 {
+	width: 80%;
+    max-width: 80%;
+}
+
+#lobby-connections img {
+	position: absolute;
+    top: 10%;
+    left: 10%;
+    opacity: .4;
+}
+
+#lobby-connections .lobby-player-container.selected img,
+#lobby-connections .lobby-player-container.selected img {
+    opacity: 1;
+}
+
+#ui-connecting {
+	position: absolute;
+	top: 40%;
+	width: 60%;
+	height: 30%;
+	margin-left: auto;
+    margin-right: auto;
+    left: 20%;
+    padding: 10px;
+	overflow: hidden;
+	text-align: center;
+}
+
+#icon-connecting {
+	height: 50%;
+    text-align: center;
+    margin: 0 auto;
+}
+
+#uitest {
+    display: block;
+    background: rgba(0,0,0,.5);
+    width: 20%;
+    left: 30%;
+    top: 40%;
+    height: 20%;
+    position:absolute;
+}
+
+
+hr {
+	border-top: 1px solid rgba(255,255,255,.6);
+}
+	*/

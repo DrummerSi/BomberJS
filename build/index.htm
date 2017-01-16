@@ -1,0 +1,383 @@
+﻿<!DOCTYPE html>
+
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Bomberman</title>
+	<link rel="stylesheet" href="assets/css/bootstrap.css" type="text/css" />
+	<link rel="stylesheet" href="assets/css/font-awesome.min.css" type="text/css" />
+    <link rel="stylesheet" href="assets/css/animate.css" type="text/css" />
+
+	<link rel="stylesheet" href="assets/css/app.css" type="text/css" />
+
+    <link rel="stylesheet" href="libs/perfect-scrollbar.min.css" type="text/css" />
+
+    <script src="https://www.gstatic.com/firebasejs/3.4.0/firebase.js"></script>
+
+    <script src="libs/phaser.min.js"></script>
+	<!--<script src="libs/phaser-debug.js"></script>-->
+	<script src="libs/jquery-3.1.0.min.js"></script>
+	<script src="libs/bootstrap.min.js"></script>
+	<script src="libs/lodash.js"></script>
+	<script src="libs/webfontloader.js"></script>
+    <script src="libs/mustache.min.js"></script>
+	<script src="libs/jsonc.js"></script>
+	<script src="libs/jquery.popuplayer.min.js"></script>
+	<script src="libs/bootbox.min.js"></script>
+	<script src="libs/perfect-scrollbar.jquery.min.js"></script>
+	<script src="libs/pathfinding-browser.min.js"></script>
+
+	<script>
+		//Ready the web fonts
+		WebFont.load({
+			custom: {
+			    families: ['Digital-7Mono', 'Baloo Tamma'],
+			    urls: ['assets/css/fonts.css', 'https://fonts.googleapis.com/css?family=Baloo+Tamma']
+			},
+			active: function() {
+				fontLoaded();
+			}
+		})
+	</script>
+
+	<script src="game.js"></script>
+</head>
+<body>
+
+	<div id="content">
+
+		<div id="header">
+			<button type="button" class="btn btn-primary" id="mainMenuButton">Menu</button>
+			Bomberman Title/ Logo
+		</div>
+		<div id="container">
+			<div id="side">
+
+				<div id="countdown" class="well well-sm">
+					<div>BOOM!</div>
+				</div>
+
+                <div id="info" class="well well-sm">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi venenatis ante nulla, eu viverra elit iaculis vel. Suspendisse nec orci in nisi pretium malesuada at at nunc. Nam blandit quam ex, ac gravida lorem fringilla ac. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Quisque aliquet nisi metus, pellentesque posuere lectus convallis vitae. In vel rutrum mauris. Quisque ut est quam. In ac volutpat justo. Duis quis ligula imperdiet, sollicitudin enim quis, vehicula lectus. Fusce auctor tempor arcu, eget varius lectus faucibus a. Curabitur faucibus lorem vel urna dignissim efficitur. Nunc at justo id metus luctus vulputate sed quis orci.
+                </div>
+
+				<div id="players" class="well well-sm" style="display: none;">
+
+					<div class="media">
+						<div class="media-left">
+							<img src="assets/gfx/ui/player.png" />
+						</div>
+						<div class="media-body">
+							<h4 class="media-heading">Simon</h4>
+							<ul class="trophies">
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+							</ul>
+						</div>
+					</div>
+
+					<div class="media">
+						<div class="media-left">
+							<img src="assets/gfx/ui/player.png" />
+						</div>
+						<div class="media-body">
+							<h4 class="media-heading">Player name</h4>
+							<ul class="trophies">
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+							</ul>
+						</div>
+					</div>
+
+					<div class="media">
+						<div class="media-left">
+							<img src="assets/gfx/ui/player.png" />
+						</div>
+						<div class="media-body">
+							<h4 class="media-heading">Bot #1</h4>
+							<ul class="trophies">
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy won"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+							</ul>
+						</div>
+					</div>
+
+					<div class="media">
+						<div class="media-left">
+							<img src="assets/gfx/ui/player.png" />
+						</div>
+						<div class="media-body">
+							<h4 class="media-heading">Nooby McNoob face</h4>
+							<ul class="trophies">
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+								<li><i class="fa fa-trophy"></i></li>
+							</ul>
+						</div>
+					</div>
+
+				</div>
+
+				<div id="chat">
+
+				</div>
+
+               
+
+			</div>
+			<div id="main">
+				<div class="well well-sm">
+					<div id="game" style="position: relative;">
+						<!--
+                        <div id="lobby">
+                            <div class="modal-dialog modal-lg" role="document">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                                        <h4 class="modal-title">Modal title</h4>
+                                    </div>
+                                    <div class="modal-body">
+
+                                        <div class="form-group">
+                                            <label for="lobby_map">Map</label>
+                                            <select class="form-control" name="lobby_map" id="lobby_map">
+                                                <option selected>Random</option>
+                                                <option>Classic</option>
+                                                <option>Toys</option>
+                                                <option>Snow</option>
+                                                <option>UFO</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="lobby_bots">Bots</label>
+                                            <select class="form-control" name="lobby_bots" id="lobby_bots">
+                                                <option value="0">0 Bots</option>
+                                                <option value="1">1 Bot</option>
+                                                <option value="2">2 Bots</option>
+                                                <option value="3" selected>3 Bots</option>
+                                            </select>
+                                        </div>
+
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                                        <button type="button" class="btn btn-primary">Save changes</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+						-->
+
+                        <!--
+                        <div class="modal-fade-in" tabindex="-1" role="dialog" style="position:absolute; top: 20%; left: 0; right: 0; bottom: 10%;">
+                            <div class="modal-dialog modal-lg" role="document">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                                        <h4 class="modal-title">Modal title</h4>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p>One fine body&hellip;</p>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                                        <button type="button" class="btn btn-primary">Save changes</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        -->
+
+                    </div>
+                    
+				</div>
+			</div>
+		</div>
+
+		<div id="mainMenu" style="display: none">
+
+			<div class="mainMenuContainer">
+
+				<img src="assets/gfx/ui/bomberman-icon.png" id="mainMenuLogo" />
+
+				<a href="#" class="btn btn-success btn-lg btn-block">PLAY GAME</a>
+				<br />
+
+				<ul class="nav nav-pills nav-stacked">
+					<li><a href="#" id="host_game"><i class="fa fa-cloud"></i> Host game</a></li>
+					<li><a href="#"><i class="fa fa-cloud-upload"></i> Join game</a></li>
+				</ul><br />
+
+				<ul class="nav nav-pills nav-stacked">
+					<li><a href="#" id="mainMenuSingle"><i class="fa fa-user"></i> Single player</a></li>
+				</ul><br />
+
+				<ul class="nav nav-pills nav-stacked">
+					<li><a href="#" id="mainMenuHowToPlay"><i class="fa fa-question-circle"></i> How to play</a></li>
+					<li><a href="#" id="mainMenuControls"><i class="fa fa-keyboard-o"></i> Controls</a></li>
+					<li><a href="#" id="mainMenuCredits"><i class="fa fa-smile-o"></i> Credits</a></li>
+				</ul><br />
+
+				<div class="btn-group btn-group-justified" role="group">
+					<div class="btn-group" role="group">
+						<button type="button" class="btn btn-default btn-info">
+							<span class="fa-stack fa-2x">
+								<i class="fa fa-music fa-stack-1x"></i>
+								<i class="fa fa-ban fa-stack-2x text-danger"></i>
+							</span>
+							<br />Music
+						</button>
+					</div>
+					<div class="btn-group" role="group">
+						<button type="button" class="btn btn-default btn-warning">
+							<span class="fa-stack fa-2x">
+								<i class="fa fa-volume-up fa-stack-1x"></i>
+							</span>
+							<br />Sound
+						</button>
+					</div>
+					<div class="btn-group" role="group">
+						<button type="button" class="btn btn-default btn-danger" id="mainMenuFullscreen">
+							<span class="fa-stack fa-2x">
+								<i class="fa fa-arrows-alt fa-stack-1x"></i>
+							</span>
+							<br />Fullscreen
+						</button>
+					</div>
+				</div>
+
+
+			</div>
+
+		</div>
+
+	</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<div id="ui-container">
+		<div id="ui-scaler">
+
+
+			<!-- Start screen menu-->
+			<div class="ui-block menu-item hidden" id="ui-start-menu">
+				<div class="row" style="height:33%;">
+					<div class="col-sm-12 text-center">
+						<button type="button" id="btn-host-game" class="btn btn-primary btn-lg">Host</button>
+						<br />
+					</div>
+				</div>
+				<div class="row" style="height:33%;">
+					<div class="col-sm-12 text-center" style="height:33%;">
+						<button type="button" id="btn-join-game" class="btn btn-primary btn-lg">Join</button>
+					</div>
+				</div>
+				<div class="row" style="height:33%;">
+					<div class="col-sm-12 text-center" style="height:33%;">
+						<button type="button" id="btn-local-game" class="btn btn-primary btn-lg">Single player (Test)</button>
+					</div>
+				</div>
+			</div>
+
+			<!-- Generic connecting screen -->
+			<div class="ui-block menu-item hidden" id="ui-connecting">
+				<h2>Connecting...</h2>
+				<img src="assets/gfx/loading.svg" class="img-responsive" id="icon-connecting" />
+			</div>
+
+			<div class="ui-block menu-item hidden" id="ui-lobby">
+
+			</div>
+
+
+		</div>
+	</div>
+
+
+	<script id="template-lobby" type="x-tmpl-mustache">
+		<h4 style="text-align: center;">Game lobby ({{name}})</h4>
+		<hr />
+		<div id="lobby-connections">
+			<div class="row">
+				<div class="col-xs-3" id="lobby-player1">
+					LOL
+				</div>
+				<div class="col-xs-3" id="lobby-player2">
+					<img alt="140x140" data-src="holder.js/140x140" class="img-circle img-responsive" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgdmlld0JveD0iMCAwIDE0MCAxNDAiIHByZXNlcnZlQXNwZWN0UmF0aW89Im5vbmUiPjwhLS0KU291cmNlIFVSTDogaG9sZGVyLmpzLzE0MHgxNDAKQ3JlYXRlZCB3aXRoIEhvbGRlci5qcyAyLjYuMC4KTGVhcm4gbW9yZSBhdCBodHRwOi8vaG9sZGVyanMuY29tCihjKSAyMDEyLTIwMTUgSXZhbiBNYWxvcGluc2t5IC0gaHR0cDovL2ltc2t5LmNvCi0tPjxkZWZzPjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+PCFbQ0RBVEFbI2hvbGRlcl8xNTcyOTE2NjlkZCB0ZXh0IHsgZmlsbDojQUFBQUFBO2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1mYW1pbHk6QXJpYWwsIEhlbHZldGljYSwgT3BlbiBTYW5zLCBzYW5zLXNlcmlmLCBtb25vc3BhY2U7Zm9udC1zaXplOjEwcHQgfSBdXT48L3N0eWxlPjwvZGVmcz48ZyBpZD0iaG9sZGVyXzE1NzI5MTY2OWRkIj48cmVjdCB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgZmlsbD0iI0VFRUVFRSIvPjxnPjx0ZXh0IHg9IjQ1LjUiIHk9Ijc0LjUiPjE0MHgxNDA8L3RleHQ+PC9nPjwvZz48L3N2Zz4=" data-holder-rendered="true">
+				</div>
+				<div class="col-xs-3" id="lobby-player3">
+					<img alt="140x140" data-src="holder.js/140x140" class="img-circle img-responsive" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgdmlld0JveD0iMCAwIDE0MCAxNDAiIHByZXNlcnZlQXNwZWN0UmF0aW89Im5vbmUiPjwhLS0KU291cmNlIFVSTDogaG9sZGVyLmpzLzE0MHgxNDAKQ3JlYXRlZCB3aXRoIEhvbGRlci5qcyAyLjYuMC4KTGVhcm4gbW9yZSBhdCBodHRwOi8vaG9sZGVyanMuY29tCihjKSAyMDEyLTIwMTUgSXZhbiBNYWxvcGluc2t5IC0gaHR0cDovL2ltc2t5LmNvCi0tPjxkZWZzPjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+PCFbQ0RBVEFbI2hvbGRlcl8xNTcyOTE2NjlkZCB0ZXh0IHsgZmlsbDojQUFBQUFBO2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1mYW1pbHk6QXJpYWwsIEhlbHZldGljYSwgT3BlbiBTYW5zLCBzYW5zLXNlcmlmLCBtb25vc3BhY2U7Zm9udC1zaXplOjEwcHQgfSBdXT48L3N0eWxlPjwvZGVmcz48ZyBpZD0iaG9sZGVyXzE1NzI5MTY2OWRkIj48cmVjdCB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgZmlsbD0iI0VFRUVFRSIvPjxnPjx0ZXh0IHg9IjQ1LjUiIHk9Ijc0LjUiPjE0MHgxNDA8L3RleHQ+PC9nPjwvZz48L3N2Zz4=" data-holder-rendered="true">
+				</div>
+				<div class="col-xs-3" id="lobby-player4">
+					<img alt="140x140" data-src="holder.js/140x140" class="img-circle img-responsive" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgdmlld0JveD0iMCAwIDE0MCAxNDAiIHByZXNlcnZlQXNwZWN0UmF0aW89Im5vbmUiPjwhLS0KU291cmNlIFVSTDogaG9sZGVyLmpzLzE0MHgxNDAKQ3JlYXRlZCB3aXRoIEhvbGRlci5qcyAyLjYuMC4KTGVhcm4gbW9yZSBhdCBodHRwOi8vaG9sZGVyanMuY29tCihjKSAyMDEyLTIwMTUgSXZhbiBNYWxvcGluc2t5IC0gaHR0cDovL2ltc2t5LmNvCi0tPjxkZWZzPjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+PCFbQ0RBVEFbI2hvbGRlcl8xNTcyOTE2NjlkZCB0ZXh0IHsgZmlsbDojQUFBQUFBO2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1mYW1pbHk6QXJpYWwsIEhlbHZldGljYSwgT3BlbiBTYW5zLCBzYW5zLXNlcmlmLCBtb25vc3BhY2U7Zm9udC1zaXplOjEwcHQgfSBdXT48L3N0eWxlPjwvZGVmcz48ZyBpZD0iaG9sZGVyXzE1NzI5MTY2OWRkIj48cmVjdCB3aWR0aD0iMTQwIiBoZWlnaHQ9IjE0MCIgZmlsbD0iI0VFRUVFRSIvPjxnPjx0ZXh0IHg9IjQ1LjUiIHk9Ijc0LjUiPjE0MHgxNDA8L3RleHQ+PC9nPjwvZz48L3N2Zz4=" data-holder-rendered="true">
+				</div>
+			</div>
+		</div>
+		{{#isHost}}
+		<hr />
+		<div class="row text-right">
+			<div class="col-sm-8">
+				<select class="form-control">
+					<option>Random</option>
+					<option>Toys</option>
+					<option>Micro</option>
+					<option>UFO</option>
+					<option>Snow</option>
+				</select>
+			</div>
+			<div class="col-sm-2">
+				<select class="form-control">
+					<option>1 win</option>
+					<option>2 wins</option>
+					<option>3 wins</option>
+					<option>4 wins</option>
+					<option>5 wins</option>
+				</select>
+			</div>
+			<div class="col-sm-2">
+				<button type="button" id="btn-start-game" class="btn btn-primary btn-lg">Start</button>
+			</div>
+		</div>
+		{{/isHost}}
+	</script>
+
+	<script id="template-lobby-player" type="x-tmpl-mustache">
+		<div class="lobby-player-container {{style}}"><img class="player1" src="assets/gfx/ui/player.png" /></div>
+		<br />{{name}}
+	</script>
+
+</body>
+</html>
