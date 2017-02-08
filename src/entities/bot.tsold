@@ -1,0 +1,153 @@
+﻿/// <reference path="player.ts" />
+/// <reference path="../../typings/pathfinding.d.ts" />
+
+module BombermanOld {
+
+	/*************************************************************
+	 * AI Bot class
+	 *************************************************************/
+
+	export const AI_VIEW_SIZE = 6;
+
+	export class Bot extends Player {
+
+		//Pathfinding matrix
+		private matrix: Array<Array<number>>;
+		private grid: PF.Grid;
+
+
+		//Number of milliseconds left before we'll issue a new command.. makes the bot seem more human
+		private pauseTimeLeft: number;
+
+		//Number of milliseconds left before a new move command is issued
+		private moveTimeLeft: number; 
+
+		//What action should the bot do next
+		private mode: BotMode;
+
+		//Direction the bot is moving in
+		private moveDirection: Move;
+
+		private debug: Debug;
+
+
+		constructor(battle: Battle, location: Point, colour: PlayerColour) {
+			super(battle, location, colour);
+
+			//Set entity to BOT
+			this.entityType = EntityType.Bot;
+
+			//Setup the matrix
+			this.matrix = Utils.matrix(cfg.tile.height, cfg.tile.width, 0);
+			this.updatePathMatrix();
+
+			this.moveDirection = Move.None;
+
+			this.pauseTimeLeft = .5;
+			this.moveTimeLeft = 0;
+
+
+			//Init debug
+			this.debug = new Debug(this.battle);
+
+
+			let tiles = this.battle.getTilesInRange(this.location, AI_VIEW_SIZE);
+
+			console.log(tiles);
+			this.debug.markTiles(tiles);
+
+			console.log(this.debug);
+			//this.debug.clearTiles();
+
+		}
+
+
+		/**
+		 * Per tick update function
+		 */
+		public update(delta: number) {
+
+			//Exit early if the bot is dead
+			if (!this.alive) {
+				return;
+			}
+
+			if (this.pauseTimeLeft <= 0) {
+				if (this.moveTimeLeft <= 0) {
+					this.updatePathMatrix();
+
+					if (this.mode === BotMode.Think) {
+						this.modeThink();
+					}
+
+
+					this.processMovement(this.moveDirection, delta);
+					this.processAction();
+					this.pauseTimeLeft -= delta;
+
+				}
+			} else {
+				//The bot must wait
+				this.processMovement(this.moveDirection, delta);
+				this.processAction();
+				this.pauseTimeLeft -= delta;
+			}
+			
+		}
+
+		private setBotMode(mode: BotMode) {
+
+			//TODO: Need to update the "pause" timer to allow the bot to "think"
+
+			this.mode = mode;
+		}
+
+
+		/**
+		 * Think/calculate what action should be performed next
+		 */
+		private modeThink() {
+
+			//Grab an array of all danger points. .Where bombs WILL explode, and where they ARE exploding
+			let dangerPositions = this.battle.getDangerPositions();
+
+			//Check if we're in danger... If so, activate defend mode
+			if (_.some(dangerPositions, this.location)) {
+				this.setBotMode(BotMode.Defend);
+				return;
+			}
+
+			//Grab a list of tiles in range
+			let tiles = this.battle.getTilesInRange(this.location, AI_VIEW_SIZE);
+
+			console.log(tiles);
+			this.debug.markTiles(tiles);
+
+
+			//Best places to go
+			let beatGoal = this.location;
+			let bestMark = 0;
+
+
+
+		}
+
+
+		/**
+		 * Updates the pathfinding matrix
+		 */
+		private updatePathMatrix(): void {
+			for (let tile of this.battle.baseTiles) {
+				if (tile.isBlocked() || tile.isBomb()) {
+					this.matrix[tile.location.y][tile.location.x] = 1; //Blocked
+				} else {
+					this.matrix[tile.location.y][tile.location.x] = 1; //Passable
+				}
+			}
+			this.grid = new PF.Grid(this.matrix);
+		}
+
+
+	}
+
+}

@@ -80,10 +80,28 @@ module Bomberman {
 		Bomb
 	}
 
+	//Modes assignable to bots
+	export enum BotMode {
+		Think,			//Decide what to do next
+		Item,			//Pick up an item or drop bomb to destroy wall
+		Attack,			//Attack another player
+		Defend,			//Try to get to a safe place
+		Walk			//Walk in random direction until there is some activity around the bot
+	}
+
 	// The items available in the map
 	export enum ItemType {
+		None = 0,			// NONE
 		BombUp = 1,			// +1 bomb
 		FireUp = 2,			// +1 bomb strength
+	}
+
+	// Type of tile to show debug information about
+	export enum DebugTile {
+		Danger,
+		Movement,
+		Path,
+		Highlight
 	}
 
 
@@ -155,7 +173,7 @@ module Bomberman {
 
 
 	/*************************************************************
-	 * Multipleayer based interfaces & enums
+	 * Multiplayer based interfaces & enums
 	 *************************************************************/
 
 	// Message sent to clients

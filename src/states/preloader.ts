@@ -71,29 +71,65 @@
 
 		create() {
 
+			//Decide which function we want to run when all assets are loaded... 
+			//Here we can run specific functions used for testing purposes
+
+			//Show the main menu
+			//this.startupGame();
+
+
+			//Start a single player match
+			this.testSinglePlayerMatch();
+
+
+			//Start a single player round
+			//this.testSinglePlayerRound();
+		}
+
+
+		/**
+		 * Main startup function for the game -- Displays the main menu
+		 */
+		private startupGame() {
 			//Show start screen
 			this.game.state.start("TitleScreen", true, false);
+
+			//Setup the ui/ button & mouse clicks, etc
+			//new UIManager().init(this.game);
+		}
+
+		/**
+		 * Start a single player match
+		 */
+		private testSinglePlayerMatch() {
 
 			//Setup the ui/ button & mouse clicks, etc
 			new UIManager().init(this.game);
 
 
-			//Testing
+			//Start game
 			new Match(this.game, GameType.Local);
 
-			//this.game.state.start("Battle", true, false);
+		}
 
-			/*
-			//this.game.state.start("Game", true, false);		
+		/**
+		 * Start a single player round
+		 */
+		private testSinglePlayerRound() {
 
-			//For testing purposes only
-			new Round(this.game, GameType.Local);
-			*/
+			//Setup the ui/ button & mouse clicks, etc
+			new UIManager().init(this.game);
+
+
+			//Start game
+			//new Match(this.game, GameType.Local);
+			//alert("Setup round");
+
 		}
 
 
 		/**
-		 * Update the progress bar
+		 * Update the progress bar when loading
 		 */
 		private fileComplete(progress, cacheKey, success, totalLoaded, totalFiles) {
 			this.progress.text = progress + "%";

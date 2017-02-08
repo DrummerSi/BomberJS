@@ -35,6 +35,9 @@
 			this.game.stage.smoothed = false;
 			this.game.time.advancedTiming = true;
 
+			//Init plugins
+			this.game.add.plugin(eval("Phaser.Plugin.Debug"));
+
 
 			this.game.state.start("Preloader", true, false);
 

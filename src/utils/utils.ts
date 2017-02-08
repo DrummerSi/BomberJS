@@ -95,6 +95,24 @@
 		}
 
 		/**
+		 * Creates a 2d matrix of a specified size
+		 */
+		static matrix(rows: number, cols: number, defaultValue?: any): Array<any> {
+			let arr = [];
+			for (let i = 0; i < rows; i++) {
+				arr.push([]);
+				arr[i].push(new Array(cols));
+
+				if (typeof defaultValue !== 'undefined') {
+					for (let j = 0; j < cols; j++) {
+						arr[i][j] = defaultValue;
+					}
+				}
+			}
+			return arr;
+		}
+
+		/**
 		 * Returns a map object based on it's map name
 		 */
 		static loadStage(battleConfig: IBattleConfig): Map {

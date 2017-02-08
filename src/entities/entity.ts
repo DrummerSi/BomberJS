@@ -192,7 +192,7 @@
 			this.entityType === EntityType.Bot ||
 			this.entityType === EntityType.Remote) {
 				let monster = this.battle.getMonster(this.location);
-				if (monster) {
+				if (monster && monster.isAlive() && !monster.isDying()) {
 					return true;
 				}
 			}

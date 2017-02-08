@@ -22,8 +22,13 @@ var Bomberman;
             strength: 15,
             speed: 10
         },
+        debug: {
+            showDebugTable: false,
+            showMarkers: false,
+            showTileValues: false,
+        },
         muteMusic: true,
-        muteSound: false
+        muteSound: true
     };
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
@@ -132,7 +137,7 @@ var Bomberman;
                 this.entityType === Bomberman.EntityType.Bot ||
                 this.entityType === Bomberman.EntityType.Remote) {
                 var monster = this.battle.getMonster(this.location);
-                if (monster) {
+                if (monster && monster.isAlive() && !monster.isDying()) {
                     return true;
                 }
             }
@@ -341,15 +346,520 @@ var Bomberman;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
+    var Player = (function (_super) {
+        __extends(Player, _super);
+        function Player(battle, location, colour) {
+            var _this = _super.call(this, battle, location) || this;
+            _this.playerColour = Bomberman.PlayerColour.White;
+            _this.playerColour = colour;
+            _this.entityType = Bomberman.EntityType.Local;
+            _this.bmp = new Phaser.Sprite(_this.game, -16, -28, "player");
+            _this.bmp.animations.add("down", [1, 0, 2, 0].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("right", [4, 3, 5, 3].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("left", [7, 6, 8, 6].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("up", [10, 9, 11, 9].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("down-idle", [0].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("right-idle", [3].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("left-idle", [6].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("up-idle", [9].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.add("die", [12, 13, 14, 15, 16, 17, 18, 19, 20].multiplyByPlayer(_this.playerColour));
+            _this.bmp.animations.play("down-idle", _this.animWalkSpeed(), true);
+            var position = Bomberman.Utils.convertToBitmapPosition(location);
+            _this.container = _this.game.add.group();
+            _this.container.name = "Player";
+            _this.container.x = position.x;
+            _this.container.y = position.y;
+            _this.container.addChild(_this.bmp);
+            _this.updateLocation();
+            _this.bombs = [];
+            _this.bombQuantity = 1;
+            _this.bombStrength = 2;
+            _this.canUseItems = true;
+            return _this;
+        }
+        Player.prototype.update = function (delta) {
+            if (!this.alive) {
+                return;
+            }
+            var movement = Bomberman.Move.None;
+            if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP)) {
+                movement = Bomberman.Move.Up;
+            }
+            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.DOWN)) {
+                movement = Bomberman.Move.Down;
+            }
+            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT)) {
+                movement = Bomberman.Move.Left;
+            }
+            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT)) {
+                movement = Bomberman.Move.Right;
+            }
+            if (this.game.input.keyboard.isDown(Phaser.Keyboard.SPACEBAR)) {
+                this.action = Bomberman.Action.Bomb;
+            }
+            ;
+            this.processMovement(movement, delta);
+            this.processAction();
+        };
+        Player.prototype.setName = function (name) {
+            this.name = name;
+        };
+        Player.prototype.die = function () {
+            _super.prototype.die.call(this);
+            this.redistributeItems();
+        };
+        Player.prototype.bombsLeft = function () {
+            return this.bombQuantity - this.bombs.length;
+        };
+        Player.prototype.processMovement = function (movement, delta) {
+            var originalValues = {
+                x: this.container.x,
+                y: this.container.y,
+                d: this.direction
+            };
+            var position = new Bomberman.Point(this.container.x, this.container.y);
+            var dirX = 0;
+            var dirY = 0;
+            if (movement === Bomberman.Move.Up) {
+                position.y -= this.speed * delta;
+                dirY = -1;
+                this.direction = Bomberman.Direction.Up;
+                this.bmp.animations.play("up", this.animWalkSpeed(), true);
+            }
+            else if (movement === Bomberman.Move.Down) {
+                position.y += this.speed * delta;
+                dirY = 1;
+                this.direction = Bomberman.Direction.Down;
+                this.bmp.animations.play("down", this.animWalkSpeed(), true);
+            }
+            else if (movement === Bomberman.Move.Left) {
+                position.x -= this.speed * delta;
+                dirX = -1;
+                this.direction = Bomberman.Direction.Left;
+                this.bmp.animations.play("left", this.animWalkSpeed(), true);
+            }
+            else if (movement === Bomberman.Move.Right) {
+                position.x += this.speed * delta;
+                dirX = 1;
+                this.direction = Bomberman.Direction.Right;
+                this.bmp.animations.play("right", this.animWalkSpeed(), true);
+            }
+            else {
+                this.bmp.animations.play(Bomberman.Utils.convertDirectionToString(this.direction) + "-idle", this.animWalkSpeed(), true);
+            }
+            if (position.x !== this.container.x || position.y !== this.container.y) {
+                if (!this.detectBombCollision(position)) {
+                    if (this.detectWallCollision(position)) {
+                        var cornerFix = this.getCornerFix(dirX, dirY, delta);
+                        if (cornerFix) {
+                            var fixX = 0, fixY = 0;
+                            if (dirX) {
+                                fixY = (cornerFix.y - this.container.y) > 0 ? 1 : -1;
+                                this.bmp.animations.play(fixY === 1 ? "down" : "up", this.animWalkSpeed(), true);
+                            }
+                            else {
+                                fixX = (cornerFix.x - this.container.x) > 0 ? 1 : -1;
+                                this.bmp.animations.play(fixX === 1 ? "right" : "left", this.animWalkSpeed(), true);
+                            }
+                            var diffX = this.container.x % Bomberman.cfg.tile.size;
+                            if (diffX > Bomberman.cfg.tile.size / 2) {
+                                diffX = Bomberman.cfg.tile.size - diffX;
+                            }
+                            var diffY = this.container.y % Bomberman.cfg.tile.size;
+                            if (diffY > Bomberman.cfg.tile.size / 2) {
+                                diffY = Bomberman.cfg.tile.size - diffY;
+                            }
+                            if (diffX < 0) {
+                                this.container.x += Math.max(fixX * this.speed * delta, diffX);
+                            }
+                            else {
+                                this.container.x += Math.min(fixX * this.speed * delta, diffX);
+                            }
+                            if (diffY < 0) {
+                                this.container.y += Math.max(fixY * this.speed * delta, diffY);
+                            }
+                            else {
+                                this.container.y += Math.min(fixY * this.speed * delta, diffY);
+                            }
+                            this.updateLocation();
+                        }
+                    }
+                    else {
+                        this.container.x = position.x;
+                        this.container.y = position.y;
+                        this.updateLocation();
+                    }
+                }
+            }
+            if (this.detectDeath()) {
+                this.die();
+            }
+            this.detectItemCollision();
+        };
+        return Player;
+    }(Bomberman.Entity));
+    Bomberman.Player = Player;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
+    var Bot = (function (_super) {
+        __extends(Bot, _super);
+        function Bot(battle, location, colour) {
+            var _this = _super.call(this, battle, location, colour) || this;
+            _this.AI_VIEW_SIZE = 6;
+            _this.BURN_MARK = [
+                [0, 0, 0, 0, 0, 0],
+                [10, 8, 5, 3, 2, 1],
+                [20, 17, 15, 12, 10, 5],
+                [30, 26, 24, 22, 15, 10]
+            ];
+            _this.entityType = Bomberman.EntityType.Bot;
+            _this.move = Bomberman.Move.None;
+            _this.action = Bomberman.Action.None;
+            _this.debug = new Bomberman.Debug(_this.battle);
+            _this.matrix = Bomberman.Utils.matrix(Bomberman.cfg.tile.height, Bomberman.cfg.tile.width, 0);
+            _this.updatePathMatrix();
+            _this.stopTimeLeft = 0.5;
+            _this.moveTimeLeft = 0.0;
+            _this.setBotMode(Bomberman.BotMode.Think);
+            return _this;
+        }
+        Bot.prototype.update = function (delta) {
+            this.renderDebugValues();
+            this.tilesInRange = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+            this.dangerPositions = this.battle.getDangerPositions();
+            if (!this.isAlive()) {
+                return;
+            }
+            if (this.stopTimeLeft <= 0) {
+                if (this.moveTimeLeft <= 0) {
+                    this.updatePathMatrix();
+                    if (this.botMode === Bomberman.BotMode.Think) {
+                        this.modeThink();
+                    }
+                    switch (this.botMode) {
+                        case Bomberman.BotMode.Item:
+                            this.modeItem(delta);
+                            break;
+                        case Bomberman.BotMode.Defend:
+                            this.modeDefend(delta);
+                            break;
+                    }
+                }
+                this.processMovement(this.move, delta);
+                this.processAction();
+                this.moveTimeLeft -= delta;
+            }
+            else {
+                this.processMovement(Bomberman.Move.None, delta);
+                this.processAction();
+                this.stopTimeLeft -= delta;
+            }
+        };
+        Bot.prototype.setBotMode = function (mode) {
+            if (mode === Bomberman.BotMode.Think) {
+                switch (this.botMode) {
+                    case Bomberman.BotMode.Item:
+                        this.stopTimeLeft = 0.08 + Bomberman.Utils.randomNumber(40) / 1000;
+                        break;
+                    case Bomberman.BotMode.Attack:
+                        this.stopTimeLeft = 0.20 + Bomberman.Utils.randomNumber(40) / 1000;
+                        break;
+                    case Bomberman.BotMode.Defend:
+                        this.stopTimeLeft = 0.12 + Bomberman.Utils.randomNumber(40) / 1000;
+                        break;
+                    case Bomberman.BotMode.Walk:
+                        this.stopTimeLeft = 0.22 + Bomberman.Utils.randomNumber(40) / 1000;
+                        break;
+                }
+            }
+            this.botMode = mode;
+        };
+        Bot.prototype.modeThink = function () {
+            var bestLocation;
+            var bestScore;
+            if (_.some(this.dangerPositions, this.location)) {
+                this.setBotMode(Bomberman.BotMode.Defend);
+                return;
+            }
+            bestLocation = null;
+            bestScore = 0;
+            for (var _i = 0, _a = this.tilesInRange; _i < _a.length; _i++) {
+                var tile = _a[_i];
+                var path = this.findPath(this.location, tile.location);
+                var pathLength = this.findPathLength(tile.location);
+                if (tile.getNearSoftWalls() > 0 &&
+                    pathLength !== -1 &&
+                    pathLength < (this.AI_VIEW_SIZE) &&
+                    (tile.getDeadEnd() === -1 || !this.isEnemyNear(this.location)) &&
+                    !_.some(this.dangerPositions, tile.location) &&
+                    this.canDropBombAt(tile.location)) {
+                    this.debug.tileText(tile, tile.getNearSoftWalls());
+                    if (bestScore < this.BURN_MARK[tile.getNearSoftWalls()][(path.length - 1)] ||
+                        (bestScore === this.BURN_MARK[tile.getNearSoftWalls()][pathLength] && Bomberman.Utils.randomNumber(100) >= 50)) {
+                        bestLocation = tile;
+                        bestScore = this.BURN_MARK[tile.getNearSoftWalls()][(path.length - 1)];
+                    }
+                }
+            }
+            this.debug.markTile(bestLocation, Bomberman.DebugTile.Highlight);
+            this.debug.showValue("bestScore", bestScore);
+            if (bestScore > 0) {
+                this.itemGoal = bestLocation.location;
+                this.itemDropBomb = true;
+                this.setBotMode(Bomberman.BotMode.Item);
+                return;
+            }
+        };
+        Bot.prototype.modeItem = function (delta) {
+            this.action = Bomberman.Action.None;
+            this.move = Bomberman.Move.None;
+            if ((this.isEnemyNearAndFront() &&
+                this.canDropBombAt(this.location) &&
+                Bomberman.Utils.randomNumber(100) < 70) || (this.itemDropBomb &&
+                !this.canDropBombAt(this.location))) {
+                this.setBotMode(Bomberman.BotMode.Think);
+                return;
+            }
+            var goalReached = false;
+            if (this.findPathLength(this.itemGoal) >= 0) {
+                goalReached = this.goto(this.itemGoal);
+            }
+            else {
+                this.setBotMode(Bomberman.BotMode.Think);
+                return;
+            }
+            if (goalReached && this.itemDropBomb && this.bombsLeft() > 0) {
+                this.action = Bomberman.Action.Bomb;
+                this.itemGoal = this.location;
+                this.itemDropBomb = false;
+            }
+            else if (goalReached && !this.itemDropBomb) {
+                this.setBotMode(Bomberman.BotMode.Think);
+            }
+        };
+        Bot.prototype.modeDefend = function (delta) {
+            if (!_.some(this.dangerPositions, this.location)) {
+                this.move = Bomberman.Move.None;
+                this.action = Bomberman.Action.None;
+                this.setBotMode(Bomberman.BotMode.Think);
+                return;
+            }
+            var found = false;
+            var bestLocation;
+            var bestDistance = 999;
+            var isDeadEnd = true;
+            var tiles = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+            for (var _i = 0, tiles_1 = tiles; _i < tiles_1.length; _i++) {
+                var tile = tiles_1[_i];
+                var pathLength = this.findPathLength(tile.location);
+                if (pathLength !== -1
+                    && (this.isEnemyNear(tile.location) ? tile.getDeadEnd() === -1 : tile.getDeadEnd() !== -1 || !isDeadEnd)
+                    && !_.some(this.dangerPositions, tile.location)
+                    && (pathLength < bestDistance
+                        || (pathLength === bestDistance && Bomberman.Utils.randomNumber(100) >= 50))) {
+                    found = true;
+                    bestLocation = tile.location;
+                    bestDistance = pathLength;
+                    isDeadEnd = tile.getDeadEnd() !== -1;
+                }
+            }
+            if (found) {
+                console.log(bestLocation);
+                this.goto(bestLocation);
+            }
+            else {
+                this.move = Bomberman.Move.None;
+                this.moveTimeLeft - 0;
+            }
+        };
+        Bot.prototype.goto = function (location) {
+            if (this.location === location || this.findPathLength(location) < 1) {
+                this.move = Bomberman.Move.None;
+            }
+            else {
+                var path = this.findPath(this.location, location);
+                var step = path[1];
+                if (step[0] < this.location.x) {
+                    this.move = Bomberman.Move.Left;
+                }
+                else if (step[0] > this.location.x) {
+                    this.move = Bomberman.Move.Right;
+                }
+                else if (step[1] < this.location.y) {
+                    this.move = Bomberman.Move.Up;
+                }
+                else if (step[1] > this.location.y) {
+                    this.move = Bomberman.Move.Down;
+                }
+            }
+            if (this.move !== Bomberman.Move.None) {
+                this.moveTimeLeft = Bomberman.cfg.tile.size / this.speed;
+            }
+            else {
+                this.moveTimeLeft = 0;
+            }
+            return this.location.equalTo(this.itemGoal);
+        };
+        Bot.prototype.renderDebugValues = function () {
+            this.debug.showValue("moveTimeLeft", this.moveTimeLeft.toFixed(5));
+            this.debug.showValue("stopTimeLeft", this.stopTimeLeft.toFixed(5));
+            this.debug.showValue("enemyNear?", this.isEnemyNearAndFront());
+            this.debug.showValue("atDestination", this.location.equalTo(this.itemGoal || new Bomberman.Point(0, 0)));
+            this.debug.showValue("itemDropBomb", this.itemDropBomb);
+            var move = "";
+            switch (this.move) {
+                case Bomberman.Move.Down:
+                    move = "Down";
+                    break;
+                case Bomberman.Move.Left:
+                    move = "Left";
+                    break;
+                case Bomberman.Move.None:
+                    move = "None";
+                    break;
+                case Bomberman.Move.Right:
+                    move = "Right";
+                    break;
+                case Bomberman.Move.Up:
+                    move = "Up";
+                    break;
+            }
+            this.debug.showValue("Move", move);
+            var mode = "";
+            switch (this.botMode) {
+                case Bomberman.BotMode.Attack:
+                    mode = "Attack";
+                    break;
+                case Bomberman.BotMode.Defend:
+                    mode = "Defend";
+                    break;
+                case Bomberman.BotMode.Item:
+                    mode = "Item";
+                    break;
+                case Bomberman.BotMode.Think:
+                    mode = "Think";
+                    break;
+                case Bomberman.BotMode.Walk:
+                    mode = "Walk";
+                    break;
+            }
+            this.debug.showValue("Mode", mode);
+            this.debug.renderValues();
+            this.debug.markTiles(this.tilesInRange, Bomberman.DebugTile.Movement);
+            this.debug.markPoints(this.dangerPositions, Bomberman.DebugTile.Danger);
+        };
+        Bot.prototype.canDropBombAt = function (location) {
+            if (this.findPathLength(location) < 0 ||
+                this.battle.getBomb(location)) {
+                return false;
+            }
+            if (!_.some(this.dangerPositions, location)) {
+                var tile = this.battle.getBaseTile(location);
+                if ((!tile.tileLeft() || _.some(this.dangerPositions, tile.tileLeft().location)) &&
+                    (!tile.tileRight() || _.some(this.dangerPositions, tile.tileRight().location)) &&
+                    (!tile.tileUp() || _.some(this.dangerPositions, tile.tileUp().location)) &&
+                    (!tile.tileDown() || _.some(this.dangerPositions, tile.tileDown().location))) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        Bot.prototype.isEnemyNearAndFront = function () {
+            if (this.battle.getBomb(this.location)) {
+                return false;
+            }
+            var entities = this.battle.getEntities(this.location);
+            if (entities.length > 1) {
+                for (var _i = 0, entities_1 = entities; _i < entities_1.length; _i++) {
+                    var entity = entities_1[_i];
+                    if (entity !== this && entity.isAlive()) {
+                        return true;
+                    }
+                }
+            }
+            var MAX_NEAR_DISTANCE = 3;
+            var checkLocation = this.location;
+            var tiles;
+            for (var direction = 1; direction <= 4; direction++) {
+                tiles = this.tilesFromCenter(this.location, direction, MAX_NEAR_DISTANCE);
+                for (var _a = 0, tiles_2 = tiles; _a < tiles_2.length; _a++) {
+                    var tile = tiles_2[_a];
+                    if (tile.isBlocked() || tile.isBomb()) {
+                        break;
+                    }
+                    else if (this.battle.getEntity(tile.location)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        Bot.prototype.isEnemyNear = function (location) {
+            for (var _i = 0, _a = this.battle.entities; _i < _a.length; _i++) {
+                var entity = _a[_i];
+                if (entity.isAlive() &&
+                    Math.abs(entity.location.x - location.x) + Math.abs(entity.location.y - location.y) <= 3 &&
+                    Bomberman.Utils.randomNumber(100) < 92) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        Bot.prototype.updatePathMatrix = function () {
+            this.debug.clearAll(Bomberman.DebugTile.Path);
+            for (var _i = 0, _a = this.battle.baseTiles; _i < _a.length; _i++) {
+                var tile = _a[_i];
+                if ((tile.isBlocked() || tile.isBomb()) && !tile.location.equalTo(this.location)) {
+                    this.matrix[tile.location.y][tile.location.x] = 1;
+                }
+                else {
+                    this.matrix[tile.location.y][tile.location.x] = 0;
+                    this.debug.markTile(tile, Bomberman.DebugTile.Path, false);
+                }
+            }
+            this.grid = new PF.Grid(this.matrix);
+        };
+        Bot.prototype.findPath = function (source, destination) {
+            var grid = this.grid.clone();
+            var finder = new PF.AStarFinder({
+                weight: 10
+            });
+            return finder.findPath(source.x, source.y, destination.x, destination.y, grid);
+        };
+        Bot.prototype.findPathLength = function (destination) {
+            var path = this.findPath(this.location, destination);
+            return path.length - 1;
+        };
+        Bot.prototype.tilesFromCenter = function (location, direction, distance) {
+            var addition;
+            var point = location.clone();
+            var output = [];
+            for (var j = 1; j <= distance; j++) {
+                point = location.moveDirection(direction);
+                var tile = this.battle.getBaseTile(point);
+                if (tile) {
+                    output.push(tile);
+                }
+            }
+            return output;
+        };
+        return Bot;
+    }(Bomberman.Player));
+    Bomberman.Bot = Bot;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
     var Monster = (function (_super) {
         __extends(Monster, _super);
         function Monster(battle, location) {
-            _super.call(this, battle, location);
-            this.entityType = Bomberman.EntityType.Monster;
-            this.stopTimeLeft = 0.3;
-            this.moveTimeLeft = 0;
-            this.stopTime = 2;
-            this.setupInitialDirection();
+            var _this = _super.call(this, battle, location) || this;
+            _this.entityType = Bomberman.EntityType.Monster;
+            _this.stopTimeLeft = 0.3;
+            _this.moveTimeLeft = 0;
+            _this.stopTime = 2;
+            _this.setupInitialDirection();
+            return _this;
         }
         Monster.prototype.update = function (delta) {
             if (!this.isAlive()) {
@@ -518,70 +1028,35 @@ var Bomberman;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
-    var Bot = (function (_super) {
-        __extends(Bot, _super);
-        function Bot(battle, location, colour) {
-            _super.call(this, battle, location);
-            this.playerColour = Bomberman.PlayerColour.White;
-            this.playerColour = colour;
-            this.entityType = Bomberman.EntityType.Local;
-            this.bmp = new Phaser.Sprite(this.game, -16, -28, "player");
-            this.bmp.animations.add("down", [1, 0, 2, 0].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("right", [4, 3, 5, 3].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("left", [7, 6, 8, 6].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("up", [10, 9, 11, 9].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("down-idle", [0].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("right-idle", [3].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("left-idle", [6].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("up-idle", [9].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("die", [12, 13, 14, 15, 16, 17, 18, 19, 20].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.play("down-idle", this.animWalkSpeed(), true);
-            var position = Bomberman.Utils.convertToBitmapPosition(location);
-            this.container = this.game.add.group();
-            this.container.name = "Player";
-            this.container.x = position.x;
-            this.container.y = position.y;
-            this.container.addChild(this.bmp);
-            this.updateLocation();
-            this.bombs = [];
-        }
-        Bot.prototype.setName = function (name) {
-            this.name = name;
-        };
-        return Bot;
-    }(Bomberman.Entity));
-    Bomberman.Bot = Bot;
-})(Bomberman || (Bomberman = {}));
-var Bomberman;
-(function (Bomberman) {
     var MonsterBlob = (function (_super) {
         __extends(MonsterBlob, _super);
         function MonsterBlob(battle, location) {
-            _super.call(this, battle, location);
-            this.monsterType = Bomberman.MonsterType.Blue;
-            this.bmp = new Phaser.Sprite(this.game, 0, -16, "monster-blob");
-            this.bmp.animations.add("down", [0, 1, 0, 2]);
-            this.bmp.animations.add("right", [3, 4, 3, 5]);
-            this.bmp.animations.add("left", [6, 7, 6, 8]);
-            this.bmp.animations.add("up", [9, 10, 9, 11]);
-            this.bmp.animations.add("down-idle", [0]);
-            this.bmp.animations.add("right-idle", [3]);
-            this.bmp.animations.add("left-idle", [6]);
-            this.bmp.animations.add("up-idle", [9]);
-            this.bmp.animations.add("die", [12, 13, 14, 15, 16, 17, 18, 19, 20]);
-            this.bmp.animations.play(Bomberman.Utils.convertDirectionToString(this.direction) + "-idle", this.animWalkSpeed(), true);
+            var _this = _super.call(this, battle, location) || this;
+            _this.monsterType = Bomberman.MonsterType.Blue;
+            _this.bmp = new Phaser.Sprite(_this.game, 0, -16, "monster-blob");
+            _this.bmp.animations.add("down", [0, 1, 0, 2]);
+            _this.bmp.animations.add("right", [3, 4, 3, 5]);
+            _this.bmp.animations.add("left", [6, 7, 6, 8]);
+            _this.bmp.animations.add("up", [9, 10, 9, 11]);
+            _this.bmp.animations.add("down-idle", [0]);
+            _this.bmp.animations.add("right-idle", [3]);
+            _this.bmp.animations.add("left-idle", [6]);
+            _this.bmp.animations.add("up-idle", [9]);
+            _this.bmp.animations.add("die", [12, 13, 14, 15, 16, 17, 18, 19, 20]);
+            _this.bmp.animations.play(Bomberman.Utils.convertDirectionToString(_this.direction) + "-idle", _this.animWalkSpeed(), true);
             var position = Bomberman.Utils.convertToBitmapPosition(location);
-            this.container = this.game.add.group();
-            this.container.name = "Blob";
-            this.container.x = position.x;
-            this.container.y = position.y;
-            this.container.addChild(this.bmp);
-            this.battle.entityView.addChild(this.container);
-            this.lives = 1;
-            this.speed = 300;
-            this.stopTime = .6;
-            this.updateLocation();
-            this.setupAI();
+            _this.container = _this.game.add.group();
+            _this.container.name = "Blob";
+            _this.container.x = position.x;
+            _this.container.y = position.y;
+            _this.container.addChild(_this.bmp);
+            _this.battle.entityView.addChild(_this.container);
+            _this.lives = 1;
+            _this.speed = 300;
+            _this.stopTime = .6;
+            _this.updateLocation();
+            _this.setupAI();
+            return _this;
         }
         MonsterBlob.prototype.setupAI = function () {
         };
@@ -610,31 +1085,32 @@ var Bomberman;
     var MonsterBlue = (function (_super) {
         __extends(MonsterBlue, _super);
         function MonsterBlue(battle, location) {
-            _super.call(this, battle, location);
-            this.monsterType = Bomberman.MonsterType.Blue;
-            this.bmp = new Phaser.Sprite(this.game, -32, -64, "monster-blue");
-            this.bmp.animations.add("down", [0, 1, 2, 1]);
-            this.bmp.animations.add("right", [3, 4, 5, 3]);
-            this.bmp.animations.add("up", [6, 7, 8, 7]);
-            this.bmp.animations.add("left", [9, 10, 11, 10]);
-            this.bmp.animations.add("down-idle", [0]);
-            this.bmp.animations.add("right-idle", [3]);
-            this.bmp.animations.add("up-idle", [6]);
-            this.bmp.animations.add("left-idle", [9]);
-            this.bmp.animations.add("die", [12, 13, 14, 15, 16]);
-            this.bmp.animations.play("down-idle", this.animWalkSpeed(), true);
+            var _this = _super.call(this, battle, location) || this;
+            _this.monsterType = Bomberman.MonsterType.Blue;
+            _this.bmp = new Phaser.Sprite(_this.game, -32, -64, "monster-blue");
+            _this.bmp.animations.add("down", [0, 1, 2, 1]);
+            _this.bmp.animations.add("right", [3, 4, 5, 3]);
+            _this.bmp.animations.add("up", [6, 7, 8, 7]);
+            _this.bmp.animations.add("left", [9, 10, 11, 10]);
+            _this.bmp.animations.add("down-idle", [0]);
+            _this.bmp.animations.add("right-idle", [3]);
+            _this.bmp.animations.add("up-idle", [6]);
+            _this.bmp.animations.add("left-idle", [9]);
+            _this.bmp.animations.add("die", [12, 13, 14, 15, 16]);
+            _this.bmp.animations.play("down-idle", _this.animWalkSpeed(), true);
             var position = Bomberman.Utils.convertToBitmapPosition(location);
-            this.container = this.game.add.group();
-            this.container.name = "Blue";
-            this.container.x = position.x;
-            this.container.y = position.y;
-            this.container.addChild(this.bmp);
-            this.battle.entityView.addChild(this.container);
-            this.lives = 3;
-            this.speed = 280;
-            this.stopTime = .4;
-            this.updateLocation();
-            this.setupAI();
+            _this.container = _this.game.add.group();
+            _this.container.name = "Blue";
+            _this.container.x = position.x;
+            _this.container.y = position.y;
+            _this.container.addChild(_this.bmp);
+            _this.battle.entityView.addChild(_this.container);
+            _this.lives = 3;
+            _this.speed = 280;
+            _this.stopTime = .4;
+            _this.updateLocation();
+            _this.setupAI();
+            return _this;
         }
         MonsterBlue.prototype.setupAI = function () {
         };
@@ -667,158 +1143,6 @@ var Bomberman;
     }(Bomberman.Monster));
     Bomberman.MonsterBlue = MonsterBlue;
 })(Bomberman || (Bomberman = {}));
-var Bomberman;
-(function (Bomberman) {
-    var Player = (function (_super) {
-        __extends(Player, _super);
-        function Player(battle, location, colour) {
-            _super.call(this, battle, location);
-            this.playerColour = Bomberman.PlayerColour.White;
-            this.playerColour = colour;
-            this.entityType = Bomberman.EntityType.Local;
-            this.bmp = new Phaser.Sprite(this.game, -16, -28, "player");
-            this.bmp.animations.add("down", [1, 0, 2, 0].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("right", [4, 3, 5, 3].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("left", [7, 6, 8, 6].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("up", [10, 9, 11, 9].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("down-idle", [0].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("right-idle", [3].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("left-idle", [6].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("up-idle", [9].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.add("die", [12, 13, 14, 15, 16, 17, 18, 19, 20].multiplyByPlayer(this.playerColour));
-            this.bmp.animations.play("down-idle", this.animWalkSpeed(), true);
-            var position = Bomberman.Utils.convertToBitmapPosition(location);
-            this.container = this.game.add.group();
-            this.container.name = "Player";
-            this.container.x = position.x;
-            this.container.y = position.y;
-            this.container.addChild(this.bmp);
-            this.updateLocation();
-            this.bombs = [];
-            this.bombQuantity = 1;
-            this.bombStrength = 2;
-            this.canUseItems = true;
-        }
-        Player.prototype.update = function (delta) {
-            if (!this.alive) {
-                return;
-            }
-            var movement = Bomberman.Move.None;
-            if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP)) {
-                movement = Bomberman.Move.Up;
-            }
-            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.DOWN)) {
-                movement = Bomberman.Move.Down;
-            }
-            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT)) {
-                movement = Bomberman.Move.Left;
-            }
-            else if (this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT)) {
-                movement = Bomberman.Move.Right;
-            }
-            if (this.game.input.keyboard.isDown(Phaser.Keyboard.SPACEBAR)) {
-                this.action = Bomberman.Action.Bomb;
-            }
-            ;
-            this.processMovement(movement, delta);
-            this.processAction();
-        };
-        Player.prototype.setName = function (name) {
-            this.name = name;
-        };
-        Player.prototype.die = function () {
-            _super.prototype.die.call(this);
-            this.redistributeItems();
-        };
-        Player.prototype.processMovement = function (movement, delta) {
-            var originalValues = {
-                x: this.container.x,
-                y: this.container.y,
-                d: this.direction
-            };
-            var position = new Bomberman.Point(this.container.x, this.container.y);
-            var dirX = 0;
-            var dirY = 0;
-            if (movement === Bomberman.Move.Up) {
-                position.y -= this.speed * delta;
-                dirY = -1;
-                this.direction = Bomberman.Direction.Up;
-                this.bmp.animations.play("up", this.animWalkSpeed(), true);
-            }
-            else if (movement === Bomberman.Move.Down) {
-                position.y += this.speed * delta;
-                dirY = 1;
-                this.direction = Bomberman.Direction.Down;
-                this.bmp.animations.play("down", this.animWalkSpeed(), true);
-            }
-            else if (movement === Bomberman.Move.Left) {
-                position.x -= this.speed * delta;
-                dirX = -1;
-                this.direction = Bomberman.Direction.Left;
-                this.bmp.animations.play("left", this.animWalkSpeed(), true);
-            }
-            else if (movement === Bomberman.Move.Right) {
-                position.x += this.speed * delta;
-                dirX = 1;
-                this.direction = Bomberman.Direction.Right;
-                this.bmp.animations.play("right", this.animWalkSpeed(), true);
-            }
-            else {
-                this.bmp.animations.play(Bomberman.Utils.convertDirectionToString(this.direction) + "-idle", this.animWalkSpeed(), true);
-            }
-            if (position.x !== this.container.x || position.y !== this.container.y) {
-                if (!this.detectBombCollision(position)) {
-                    if (this.detectWallCollision(position)) {
-                        var cornerFix = this.getCornerFix(dirX, dirY, delta);
-                        if (cornerFix) {
-                            var fixX = 0, fixY = 0;
-                            if (dirX) {
-                                fixY = (cornerFix.y - this.container.y) > 0 ? 1 : -1;
-                                this.bmp.animations.play(fixY === 1 ? "down" : "up", this.animWalkSpeed(), true);
-                            }
-                            else {
-                                fixX = (cornerFix.x - this.container.x) > 0 ? 1 : -1;
-                                this.bmp.animations.play(fixX === 1 ? "right" : "left", this.animWalkSpeed(), true);
-                            }
-                            var diffX = this.container.x % Bomberman.cfg.tile.size;
-                            if (diffX > Bomberman.cfg.tile.size / 2) {
-                                diffX = Bomberman.cfg.tile.size - diffX;
-                            }
-                            var diffY = this.container.y % Bomberman.cfg.tile.size;
-                            if (diffY > Bomberman.cfg.tile.size / 2) {
-                                diffY = Bomberman.cfg.tile.size - diffY;
-                            }
-                            if (diffX < 0) {
-                                this.container.x += Math.max(fixX * this.speed * delta, diffX);
-                            }
-                            else {
-                                this.container.x += Math.min(fixX * this.speed * delta, diffX);
-                            }
-                            if (diffY < 0) {
-                                this.container.y += Math.max(fixY * this.speed * delta, diffY);
-                            }
-                            else {
-                                this.container.y += Math.min(fixY * this.speed * delta, diffY);
-                            }
-                            this.updateLocation();
-                        }
-                    }
-                    else {
-                        this.container.x = position.x;
-                        this.container.y = position.y;
-                        this.updateLocation();
-                    }
-                }
-            }
-            if (this.detectDeath()) {
-                this.die();
-            }
-            this.detectItemCollision();
-        };
-        return Player;
-    }(Bomberman.Entity));
-    Bomberman.Player = Player;
-})(Bomberman || (Bomberman = {}));
 Array.prototype.multiplyBy = function (multiply, factor) {
     if (factor === void 0) { factor = 1; }
     var output = [];
@@ -841,13 +1165,14 @@ var Bomberman;
     var GameEngine = (function (_super) {
         __extends(GameEngine, _super);
         function GameEngine() {
-            _super.call(this, Bomberman.cfg.game.width, Bomberman.cfg.game.height, Phaser.CANVAS, 'game', null, true);
-            this.state.add("Boot", Bomberman.Boot, false);
-            this.state.add("Preloader", Bomberman.Preloader, false);
-            this.state.add("TitleScreen", Bomberman.TitleScreen, false);
-            this.state.add("Loading", Bomberman.Loading, false);
-            this.state.add("Battle", Bomberman.Battle, false);
-            this.state.start("Boot");
+            var _this = _super.call(this, Bomberman.cfg.game.width, Bomberman.cfg.game.height, Phaser.WEBGL, 'game', null, true) || this;
+            _this.state.add("Boot", Bomberman.Boot, false);
+            _this.state.add("Preloader", Bomberman.Preloader, false);
+            _this.state.add("TitleScreen", Bomberman.TitleScreen, false);
+            _this.state.add("Loading", Bomberman.Loading, false);
+            _this.state.add("Battle", Bomberman.Battle, false);
+            _this.state.start("Boot");
+            return _this;
         }
         return GameEngine;
     }(Phaser.Game));
@@ -927,6 +1252,7 @@ var Bomberman;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
+    var Stage;
     (function (Stage) {
         Stage[Stage["Toys"] = 1] = "Toys";
         Stage[Stage["Micro"] = 2] = "Micro";
@@ -934,20 +1260,20 @@ var Bomberman;
         Stage[Stage["Snow"] = 4] = "Snow";
         Stage[Stage["Crayons"] = 5] = "Crayons";
         Stage[Stage["Classic"] = 6] = "Classic";
-    })(Bomberman.Stage || (Bomberman.Stage = {}));
-    var Stage = Bomberman.Stage;
+    })(Stage = Bomberman.Stage || (Bomberman.Stage = {}));
+    var GameType;
     (function (GameType) {
         GameType[GameType["Local"] = 0] = "Local";
         GameType[GameType["Multiplayer"] = 1] = "Multiplayer";
-    })(Bomberman.GameType || (Bomberman.GameType = {}));
-    var GameType = Bomberman.GameType;
+    })(GameType = Bomberman.GameType || (Bomberman.GameType = {}));
+    var EntityType;
     (function (EntityType) {
         EntityType[EntityType["Local"] = 0] = "Local";
         EntityType[EntityType["Remote"] = 1] = "Remote";
         EntityType[EntityType["Bot"] = 2] = "Bot";
         EntityType[EntityType["Monster"] = 3] = "Monster";
-    })(Bomberman.EntityType || (Bomberman.EntityType = {}));
-    var EntityType = Bomberman.EntityType;
+    })(EntityType = Bomberman.EntityType || (Bomberman.EntityType = {}));
+    var MonsterType;
     (function (MonsterType) {
         MonsterType[MonsterType["Blue"] = 0] = "Blue";
         MonsterType[MonsterType["Blob"] = 1] = "Blob";
@@ -955,48 +1281,63 @@ var Bomberman;
         MonsterType[MonsterType["Mouse"] = 3] = "Mouse";
         MonsterType[MonsterType["Orange"] = 4] = "Orange";
         MonsterType[MonsterType["Snail"] = 5] = "Snail";
-    })(Bomberman.MonsterType || (Bomberman.MonsterType = {}));
-    var MonsterType = Bomberman.MonsterType;
+    })(MonsterType = Bomberman.MonsterType || (Bomberman.MonsterType = {}));
+    var TileType;
     (function (TileType) {
         TileType[TileType["Base"] = 0] = "Base";
         TileType[TileType["Soft"] = 1] = "Soft";
         TileType[TileType["Hard"] = 2] = "Hard";
-    })(Bomberman.TileType || (Bomberman.TileType = {}));
-    var TileType = Bomberman.TileType;
+    })(TileType = Bomberman.TileType || (Bomberman.TileType = {}));
+    var PlayerColour;
     (function (PlayerColour) {
         PlayerColour[PlayerColour["None"] = 0] = "None";
         PlayerColour[PlayerColour["White"] = 1] = "White";
         PlayerColour[PlayerColour["Green"] = 2] = "Green";
         PlayerColour[PlayerColour["Red"] = 3] = "Red";
         PlayerColour[PlayerColour["Blue"] = 4] = "Blue";
-    })(Bomberman.PlayerColour || (Bomberman.PlayerColour = {}));
-    var PlayerColour = Bomberman.PlayerColour;
+    })(PlayerColour = Bomberman.PlayerColour || (Bomberman.PlayerColour = {}));
+    var Direction;
     (function (Direction) {
         Direction[Direction["None"] = 0] = "None";
         Direction[Direction["Up"] = 1] = "Up";
         Direction[Direction["Right"] = 2] = "Right";
         Direction[Direction["Down"] = 3] = "Down";
         Direction[Direction["Left"] = 4] = "Left";
-    })(Bomberman.Direction || (Bomberman.Direction = {}));
-    var Direction = Bomberman.Direction;
+    })(Direction = Bomberman.Direction || (Bomberman.Direction = {}));
+    var Move;
     (function (Move) {
         Move[Move["None"] = 0] = "None";
         Move[Move["Up"] = 1] = "Up";
         Move[Move["Right"] = 2] = "Right";
         Move[Move["Down"] = 3] = "Down";
         Move[Move["Left"] = 4] = "Left";
-    })(Bomberman.Move || (Bomberman.Move = {}));
-    var Move = Bomberman.Move;
+    })(Move = Bomberman.Move || (Bomberman.Move = {}));
+    var Action;
     (function (Action) {
         Action[Action["None"] = 0] = "None";
         Action[Action["Bomb"] = 1] = "Bomb";
-    })(Bomberman.Action || (Bomberman.Action = {}));
-    var Action = Bomberman.Action;
+    })(Action = Bomberman.Action || (Bomberman.Action = {}));
+    var BotMode;
+    (function (BotMode) {
+        BotMode[BotMode["Think"] = 0] = "Think";
+        BotMode[BotMode["Item"] = 1] = "Item";
+        BotMode[BotMode["Attack"] = 2] = "Attack";
+        BotMode[BotMode["Defend"] = 3] = "Defend";
+        BotMode[BotMode["Walk"] = 4] = "Walk";
+    })(BotMode = Bomberman.BotMode || (Bomberman.BotMode = {}));
+    var ItemType;
     (function (ItemType) {
+        ItemType[ItemType["None"] = 0] = "None";
         ItemType[ItemType["BombUp"] = 1] = "BombUp";
         ItemType[ItemType["FireUp"] = 2] = "FireUp";
-    })(Bomberman.ItemType || (Bomberman.ItemType = {}));
-    var ItemType = Bomberman.ItemType;
+    })(ItemType = Bomberman.ItemType || (Bomberman.ItemType = {}));
+    var DebugTile;
+    (function (DebugTile) {
+        DebugTile[DebugTile["Danger"] = 0] = "Danger";
+        DebugTile[DebugTile["Movement"] = 1] = "Movement";
+        DebugTile[DebugTile["Path"] = 2] = "Path";
+        DebugTile[DebugTile["Highlight"] = 3] = "Highlight";
+    })(DebugTile = Bomberman.DebugTile || (Bomberman.DebugTile = {}));
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
@@ -1132,7 +1473,7 @@ var Bomberman;
             return "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,7\n\t\t\t\t\t0,1,2,3,2,3,2,3,2,3,2,3,2,3,2,3,4,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1-,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,7\n\t\t\t\t\t0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,7";
         };
         Map.prototype.getBlocks = function () {
-            return "7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7\n\t\t\t\t\t7,-1,-1,-1,-1,-1,-1,-1,8,8,8,8,8,8,8,8,8,8,7\n\t\t\t\t\t7,-1,5,-1,5,-1,5,-1,5,8,5,8,5,8,5,8,5,8,7\n\t\t\t\t\t7,-1,-1,-1,-1,-1,-1,-1,8,8,8,8,8,8,8,8,8,8,7\n\t\t\t\t\t7,-1,5,8,5,-1,7,7,7,8,5,8,5,8,7,-1,7,8,7\n\t\t\t\t\t7,-1,8,8,8,8,7,7,7,8,8,8,8,8,-1,-1,-1,8,7\n\t\t\t\t\t7,8,5,8,5,8,7,7,7,8,5,8,5,8,7,-1,7,8,7\n\t\t\t\t\t7,8,8,8,8,-1,8,8,8,8,8,8,8,8,8,8,8,8,7\n\t\t\t\t\t7,8,5,8,5,8,5,8,5,8,5,8,5,8,5,8,5,8,7\n\t\t\t\t\t7,8,8,8,8,8,8,8,8,8,8,8,-1,-1,8,8,8,8,7\n\t\t\t\t\t7,8,5,8,5,8,5,8,5,8,5,8,5,-1,5,8,7,7,7\n\t\t\t\t\t7,8,8,8,8,8,8,8,8,8,8,8,8,-1,8,8,7,7,7\n\t\t\t\t\t7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7";
+            return "7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7\n\t\t\t\t\t7,-1,-1,-1,-1,-1,-1,-1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7\n\t\t\t\t\t7,-1, 5,-1, 5,-1, 5,-1, 5, 8, 5, 8, 5, 8, 5, 8, 5, 8, 7\n\t\t\t\t\t7,-1,-1,-1,-1,-1,-1,-1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7\n\t\t\t\t\t7,-1, 5, 8, 5,-1, 7, 7, 7, 8, 5, 8, 5, 8, 7,-1, 7, 8, 7\n\t\t\t\t\t7,-1, 8, 8, 8,-1, 7, 7, 7, 8, 8, 8, 8, 8,-1,-1,-1, 8, 7\n\t\t\t\t\t7, 8, 5, 8, 5,-1, 7, 7, 7, 8, 5, 8, 5, 8, 7,-1, 7, 8, 7\n\t\t\t\t\t7, 8, 8, 8, 8,-1,-1,-1,-1,-1, 8, 8, 8, 8, 8, 8, 8, 8, 7\n\t\t\t\t\t7, 8, 5, 8, 5, 8, 5, 8, 5,-1, 5, 8, 5, 8, 5, 8, 5, 8, 7\n\t\t\t\t\t7, 8, 8, 8, 8, 8, 8, 8, 8,-1, 8,-1,-1,-1, 8, 8, 8, 8, 7\n\t\t\t\t\t7, 8, 5, 8, 5, 8, 5, 8, 5,-1, 5,-1, 5,-1, 5, 8, 7, 7, 7\n\t\t\t\t\t7, 8, 8, 8, 8, 8, 8, 8, 8,-1,-1,-1, 8,-1, 8, 8, 7, 7, 7\n\t\t\t\t\t7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7";
         };
         Map.prototype.getMonsters = function () {
         };
@@ -1292,8 +1633,9 @@ var Bomberman;
     var SnowMap = (function (_super) {
         __extends(SnowMap, _super);
         function SnowMap(gameConfig) {
-            _super.call(this, gameConfig);
-            this.shadowIntensity = 0.45;
+            var _this = _super.call(this, gameConfig) || this;
+            _this.shadowIntensity = 0.45;
+            return _this;
         }
         SnowMap.prototype.setup = function (battle) {
             _super.prototype.setup.call(this, battle);
@@ -1381,7 +1723,7 @@ var Bomberman;
             var map = Bomberman.Utils.loadStage(this.battleConfig);
             this.battleConfig.players = [
                 { key: "1", name: "Player 1", type: Bomberman.EntityType.Local },
-                { key: "2", name: "Bot", type: Bomberman.EntityType.Bot },
+                { key: "2", name: "Bot 1", type: Bomberman.EntityType.Bot },
             ];
             var startData = map.generateStartData(this.battleConfig.players);
             this.battleConfig.data = jsonpack.pack(startData);
@@ -1408,192 +1750,29 @@ var Bomberman;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
-    var Explosion = (function (_super) {
-        __extends(Explosion, _super);
-        function Explosion(battle, location) {
-            _super.call(this, battle, location);
-            this.bmp = new Phaser.Sprite(this.game, 0, 0, "explosion");
-            this.bmp.animations.add("explode", [0, 1, 2, 3, 4, 5, 6]);
-            var pixels = Bomberman.Utils.convertToBitmapPosition(location);
-            this.bmp.x = pixels.x - 20;
-            this.bmp.y = pixels.y - 48;
-            this.bmp.events.onAnimationComplete.add(this.remove, this);
-            this.bmp.animations.play("explode", 10);
-            this.battle.gameView.addChild(this.bmp);
-        }
-        Explosion.prototype.remove = function () {
-            this.battle.gameView.removeChild(this.bmp);
-        };
-        return Explosion;
-    }(Bomberman.GameObject));
-    Bomberman.Explosion = Explosion;
-})(Bomberman || (Bomberman = {}));
-var Bomberman;
-(function (Bomberman) {
-    var Item = (function (_super) {
-        __extends(Item, _super);
-        function Item(battle, location, type) {
-            _super.call(this, battle, location);
-            this.bmp = new Phaser.Sprite(this.game, location.x * Bomberman.cfg.tile.size, location.y * Bomberman.cfg.tile.size, "bonuses");
-            var pixels = Bomberman.Utils.convertToBitmapPosition(location);
-            this.bmp.x = pixels.x;
-            this.bmp.y = pixels.y;
-            this.type = type;
-            var animFrames = this.generateAnimFrames(this.type);
-            this.bmp.animations.add("special", animFrames);
-            this.spawned = false;
-        }
-        Item.prototype.show = function () {
-            this.bmp.animations.play("special", 8, true);
-            var startFrame;
-            startFrame = Math.floor(10 - (this.location.x + this.location.y) % 10);
-            this.bmp.animations.currentAnim.setFrame(startFrame, true);
-            this.battle.gameView.addChild(this.bmp);
-            this.spawned = true;
-        };
-        Item.prototype.hasSpawned = function () {
-            return this.spawned;
-        };
-        Item.prototype.explode = function () {
-            new Bomberman.Explosion(this.battle, this.location);
-            this.remove();
-        };
-        Item.prototype.remove = function () {
-            this.battle.gameView.remove(this.bmp);
-            Bomberman.Utils.removeFromArray(this.battle.itemTiles, this);
-        };
-        Item.prototype.generateAnimFrames = function (animNumber) {
-            var arr = [];
-            for (var i = 0; i < 10; i++) {
-                arr.push(i + (animNumber * 10));
-            }
-            return arr;
-        };
-        return Item;
-    }(Bomberman.GameObject));
-    Bomberman.Item = Item;
-})(Bomberman || (Bomberman = {}));
-var Bomberman;
-(function (Bomberman) {
-    var Fire = (function (_super) {
-        __extends(Fire, _super);
-        function Fire(battle, bomb, locations) {
-            _super.call(this, battle, bomb.location);
-            this.bomb = bomb;
-            this.locations = locations;
-            this.bmps = [];
-            this.createFirePositions();
-        }
-        Fire.prototype.createFirePositions = function () {
-            for (var _i = 0, _a = this.locations; _i < _a.length; _i++) {
-                var location_2 = _a[_i];
-                var tileType = this.battle.getTileType(location_2);
-                if (tileType === Bomberman.TileType.Soft) {
-                    var tile = this.battle.getTile(location_2);
-                    tile.delete();
-                }
-                else {
-                    var item = this.battle.getItem(location_2);
-                    if (item) {
-                    }
-                    var bmp = new Phaser.Sprite(this.game, location_2.x * Bomberman.cfg.tile.size, location_2.y * Bomberman.cfg.tile.size, "bomb");
-                    this.bmps.push(bmp);
-                    bmp.animations.add("center", [4, 5, 6, 7]);
-                    bmp.animations.add("h", [8, 9, 10, 11]);
-                    bmp.animations.add("h-left", [12, 13, 14, 15]);
-                    bmp.animations.add("h-right", [16, 17, 18, 19]);
-                    bmp.animations.add("v", [20, 21, 22, 23]);
-                    bmp.animations.add("v-up", [24, 25, 26, 27]);
-                    bmp.animations.add("v-down", [28, 29, 30, 31]);
-                    var dir = void 0, anim = "";
-                    var bomb = this.battle.getBomb(location_2);
-                    if (bomb) {
-                        anim = "center";
-                        bomb.remove();
-                        bomb.bmp.visible = false;
-                        Bomberman.Utils.removeFromArray(this.bomb.owner.bombs, this.bomb);
-                    }
-                    else {
-                        var isHorizontal = false;
-                        var isVertical = false;
-                        var leftFire = _.find(this.locations, { x: location_2.x - 1, y: location_2.y });
-                        var rightFire = _.find(this.locations, { x: location_2.x + 1, y: location_2.y });
-                        var upFire = _.find(this.locations, { x: location_2.x, y: location_2.y - 1 });
-                        var downFire = _.find(this.locations, { x: location_2.x, y: location_2.y + 1 });
-                        if (leftFire || rightFire) {
-                            isHorizontal = true;
-                            anim = "h";
-                        }
-                        if (upFire || downFire) {
-                            isVertical = true;
-                            anim = "v";
-                        }
-                        if (isHorizontal && isVertical) {
-                            anim = "center";
-                        }
-                        else {
-                            if (isHorizontal) {
-                                if (!leftFire) {
-                                    anim = "h-left";
-                                }
-                                else if (!rightFire) {
-                                    anim = "h-right";
-                                }
-                            }
-                            if (isVertical) {
-                                if (!upFire) {
-                                    anim = "v-up";
-                                }
-                                else if (!downFire) {
-                                    anim = "v-down";
-                                }
-                            }
-                        }
-                    }
-                    bmp.events.onAnimationComplete.add(this.remove, this, 0, { bmp: bmp });
-                    bmp.animations.play(anim, 10);
-                    var pixels = Bomberman.Utils.convertToBitmapPosition(location_2);
-                    bmp.x = pixels.x;
-                    bmp.y = pixels.y;
-                    this.battle.gameView.addChild(bmp);
-                }
-            }
-        };
-        Fire.prototype.remove = function (bmp) {
-            this.battle.gameView.removeChild(bmp);
-            Bomberman.Utils.removeFromArray(this.bmps, bmp);
-            if (this.bmps.length === 0) {
-                Bomberman.Utils.removeFromArray(this.battle.fires, this);
-            }
-        };
-        return Fire;
-    }(Bomberman.GameObject));
-    Bomberman.Fire = Fire;
-})(Bomberman || (Bomberman = {}));
-var Bomberman;
-(function (Bomberman) {
     var Bomb = (function (_super) {
         __extends(Bomb, _super);
         function Bomb(battle, location, owner, strength, explodeTime) {
-            _super.call(this, battle, location);
-            this.exploded = false;
-            this.fuseTime = 3;
-            this.owner = owner;
-            this.strength = strength;
-            this.bmp = new Phaser.Sprite(this.game, location.x * Bomberman.cfg.tile.size, location.y * Bomberman.cfg.tile.size, "bomb");
-            this.bmp.animations.add("bomb", [0, 1, 2, 3]);
-            this.bmp.animations.play("bomb", 5, true);
+            var _this = _super.call(this, battle, location) || this;
+            _this.exploded = false;
+            _this.fuseTime = 3;
+            _this.owner = owner;
+            _this.strength = strength;
+            _this.bmp = new Phaser.Sprite(_this.game, location.x * Bomberman.cfg.tile.size, location.y * Bomberman.cfg.tile.size, "bomb");
+            _this.bmp.animations.add("bomb", [0, 1, 2, 3]);
+            _this.bmp.animations.play("bomb", 5, true);
             var pixels = Bomberman.Utils.convertToBitmapPosition(location);
-            this.bmp.x = pixels.x;
-            this.bmp.y = pixels.y;
-            for (var _i = 0, _a = this.battle.entities; _i < _a.length; _i++) {
+            _this.bmp.x = pixels.x;
+            _this.bmp.y = pixels.y;
+            for (var _i = 0, _a = _this.battle.entities; _i < _a.length; _i++) {
                 var entity = _a[_i];
-                if (this.location.equalTo(entity.location)) {
-                    entity.escapeBomb = this;
+                if (_this.location.equalTo(entity.location)) {
+                    entity.escapeBomb = _this;
                 }
             }
-            this.explosionSound = this.game.add.audio("explosion", .4);
-            this.explodeTime = (typeof explodeTime !== "undefined") ? explodeTime : Date.now() + (this.fuseTime * 1000);
+            _this.explosionSound = _this.game.add.audio("explosion", .4);
+            _this.explodeTime = (typeof explodeTime !== "undefined") ? explodeTime : Date.now() + (_this.fuseTime * 1000);
+            return _this;
         }
         Bomb.prototype.update = function () {
             if (this.exploded) {
@@ -1605,7 +1784,9 @@ var Bomberman;
         };
         Bomb.prototype.remove = function () {
             this.battle.gameView.remove(this.bmp);
-            Bomberman.Utils.removeFromArray(this.owner.bombs, this);
+            if (this.owner) {
+                Bomberman.Utils.removeFromArray(this.owner.bombs, this);
+            }
             Bomberman.Utils.removeFromArray(this.battle.bombs, this);
         };
         Bomb.prototype.explode = function () {
@@ -1666,6 +1847,175 @@ var Bomberman;
         return Bomb;
     }(Bomberman.GameObject));
     Bomberman.Bomb = Bomb;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
+    var Explosion = (function (_super) {
+        __extends(Explosion, _super);
+        function Explosion(battle, location) {
+            var _this = _super.call(this, battle, location) || this;
+            _this.bmp = new Phaser.Sprite(_this.game, 0, 0, "explosion");
+            _this.bmp.animations.add("explode", [0, 1, 2, 3, 4, 5, 6]);
+            var pixels = Bomberman.Utils.convertToBitmapPosition(location);
+            _this.bmp.x = pixels.x - 20;
+            _this.bmp.y = pixels.y - 48;
+            _this.bmp.events.onAnimationComplete.add(_this.remove, _this);
+            _this.bmp.animations.play("explode", 10);
+            _this.battle.gameView.addChild(_this.bmp);
+            return _this;
+        }
+        Explosion.prototype.remove = function () {
+            this.battle.gameView.removeChild(this.bmp);
+        };
+        return Explosion;
+    }(Bomberman.GameObject));
+    Bomberman.Explosion = Explosion;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
+    var Fire = (function (_super) {
+        __extends(Fire, _super);
+        function Fire(battle, bomb, locations) {
+            var _this = _super.call(this, battle, bomb.location) || this;
+            _this.bomb = bomb;
+            _this.locations = locations;
+            _this.bmps = [];
+            _this.createFirePositions();
+            return _this;
+        }
+        Fire.prototype.createFirePositions = function () {
+            for (var _i = 0, _a = this.locations; _i < _a.length; _i++) {
+                var location_2 = _a[_i];
+                var tileType = this.battle.getTileType(location_2);
+                if (tileType === Bomberman.TileType.Soft) {
+                    var tile = this.battle.getTile(location_2);
+                    tile.delete();
+                }
+                else {
+                    var item = this.battle.getItem(location_2);
+                    if (item) {
+                    }
+                    var bmp = new Phaser.Sprite(this.game, location_2.x * Bomberman.cfg.tile.size, location_2.y * Bomberman.cfg.tile.size, "bomb");
+                    this.bmps.push(bmp);
+                    bmp.animations.add("center", [4, 5, 6, 7]);
+                    bmp.animations.add("h", [8, 9, 10, 11]);
+                    bmp.animations.add("h-left", [12, 13, 14, 15]);
+                    bmp.animations.add("h-right", [16, 17, 18, 19]);
+                    bmp.animations.add("v", [20, 21, 22, 23]);
+                    bmp.animations.add("v-up", [24, 25, 26, 27]);
+                    bmp.animations.add("v-down", [28, 29, 30, 31]);
+                    var dir = void 0, anim = "";
+                    var bomb = this.battle.getBomb(location_2);
+                    if (bomb) {
+                        anim = "center";
+                        bomb.remove();
+                        bomb.bmp.visible = false;
+                        if (this.bomb.owner) {
+                            Bomberman.Utils.removeFromArray(this.bomb.owner.bombs, this.bomb);
+                        }
+                    }
+                    else {
+                        var isHorizontal = false;
+                        var isVertical = false;
+                        var leftFire = _.find(this.locations, { x: location_2.x - 1, y: location_2.y });
+                        var rightFire = _.find(this.locations, { x: location_2.x + 1, y: location_2.y });
+                        var upFire = _.find(this.locations, { x: location_2.x, y: location_2.y - 1 });
+                        var downFire = _.find(this.locations, { x: location_2.x, y: location_2.y + 1 });
+                        if (leftFire || rightFire) {
+                            isHorizontal = true;
+                            anim = "h";
+                        }
+                        if (upFire || downFire) {
+                            isVertical = true;
+                            anim = "v";
+                        }
+                        if (isHorizontal && isVertical) {
+                            anim = "center";
+                        }
+                        else {
+                            if (isHorizontal) {
+                                if (!leftFire) {
+                                    anim = "h-left";
+                                }
+                                else if (!rightFire) {
+                                    anim = "h-right";
+                                }
+                            }
+                            if (isVertical) {
+                                if (!upFire) {
+                                    anim = "v-up";
+                                }
+                                else if (!downFire) {
+                                    anim = "v-down";
+                                }
+                            }
+                        }
+                    }
+                    bmp.events.onAnimationComplete.add(this.remove, this, 0, { bmp: bmp });
+                    bmp.animations.play(anim, 10);
+                    var pixels = Bomberman.Utils.convertToBitmapPosition(location_2);
+                    bmp.x = pixels.x;
+                    bmp.y = pixels.y;
+                    this.battle.gameView.addChild(bmp);
+                }
+            }
+        };
+        Fire.prototype.remove = function (bmp) {
+            this.battle.gameView.removeChild(bmp);
+            Bomberman.Utils.removeFromArray(this.bmps, bmp);
+            if (this.bmps.length === 0) {
+                Bomberman.Utils.removeFromArray(this.battle.fires, this);
+            }
+        };
+        return Fire;
+    }(Bomberman.GameObject));
+    Bomberman.Fire = Fire;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
+    var Item = (function (_super) {
+        __extends(Item, _super);
+        function Item(battle, location, type) {
+            var _this = _super.call(this, battle, location) || this;
+            _this.bmp = new Phaser.Sprite(_this.game, location.x * Bomberman.cfg.tile.size, location.y * Bomberman.cfg.tile.size, "bonuses");
+            var pixels = Bomberman.Utils.convertToBitmapPosition(location);
+            _this.bmp.x = pixels.x;
+            _this.bmp.y = pixels.y;
+            _this.type = type;
+            var animFrames = _this.generateAnimFrames(_this.type);
+            _this.bmp.animations.add("special", animFrames);
+            _this.spawned = false;
+            return _this;
+        }
+        Item.prototype.show = function () {
+            this.bmp.animations.play("special", 8, true);
+            var startFrame;
+            startFrame = Math.floor(10 - (this.location.x + this.location.y) % 10);
+            this.bmp.animations.currentAnim.setFrame(startFrame, true);
+            this.battle.gameView.addChild(this.bmp);
+            this.spawned = true;
+        };
+        Item.prototype.hasSpawned = function () {
+            return this.spawned;
+        };
+        Item.prototype.explode = function () {
+            new Bomberman.Explosion(this.battle, this.location);
+            this.remove();
+        };
+        Item.prototype.remove = function () {
+            this.battle.gameView.remove(this.bmp);
+            Bomberman.Utils.removeFromArray(this.battle.itemTiles, this);
+        };
+        Item.prototype.generateAnimFrames = function (animNumber) {
+            var arr = [];
+            for (var i = 0; i < 10; i++) {
+                arr.push(i + (animNumber * 10));
+            }
+            return arr;
+        };
+        return Item;
+    }(Bomberman.GameObject));
+    Bomberman.Item = Item;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
@@ -1734,8 +2084,8 @@ var Bomberman;
             if (item) {
             }
             var entities = this.battle.getEntities(this.location);
-            for (var _i = 0, entities_1 = entities; _i < entities_1.length; _i++) {
-                var entity = entities_1[_i];
+            for (var _i = 0, entities_2 = entities; _i < entities_2.length; _i++) {
+                var entity = entities_2[_i];
                 entity.die();
             }
             var tile = this.battle.getTile(this.location);
@@ -1746,6 +2096,61 @@ var Bomberman;
         };
         Tile.prototype.getCollision = function () {
             return new Phaser.Rectangle((this.location.x * Bomberman.cfg.tile.size), (this.location.y * Bomberman.cfg.tile.size), 64, 64);
+        };
+        Tile.prototype.isBlocked = function () {
+            var type = this.battle.getTileType(this.location);
+            if (type !== Bomberman.TileType.Base) {
+                return true;
+            }
+            else {
+                return false;
+            }
+        };
+        Tile.prototype.isBomb = function () {
+            var bomb = this.battle.getBomb(this.location);
+            if (bomb) {
+                return true;
+            }
+            else {
+                return false;
+            }
+        };
+        Tile.prototype.tileUp = function () {
+            return this.battle.getBaseTile(new Bomberman.Point(this.location.x, this.location.y - 1));
+        };
+        Tile.prototype.tileDown = function () {
+            return this.battle.getBaseTile(new Bomberman.Point(this.location.x, this.location.y + 1));
+        };
+        Tile.prototype.tileLeft = function () {
+            return this.battle.getBaseTile(new Bomberman.Point(this.location.x - 1, this.location.y));
+        };
+        Tile.prototype.tileRight = function () {
+            return this.battle.getBaseTile(new Bomberman.Point(this.location.x + 1, this.location.y));
+        };
+        Tile.prototype.isOnOuterEdge = function () {
+            if (this.location.x === 0 || this.location.x === Bomberman.cfg.tile.width - 1 ||
+                this.location.y === 0 || this.location.y === Bomberman.cfg.tile.height - 1) {
+                return true;
+            }
+            return false;
+        };
+        Tile.prototype.setNearSoftWalls = function (val) {
+            this.nearSoftWalls = val;
+        };
+        Tile.prototype.getNearSoftWalls = function () {
+            return this.nearSoftWalls;
+        };
+        Tile.prototype.setDeadEnd = function (val) {
+            this.deadEnd = val;
+        };
+        Tile.prototype.getDeadEnd = function () {
+            return this.deadEnd;
+        };
+        Tile.prototype.setDeadEndExit = function (tile) {
+            this.deadEndExit = tile;
+        };
+        Tile.prototype.getDeadEndExit = function () {
+            return this.deadEndExit;
         };
         Tile.prototype.animationEnd = function (sprite, animation) {
             if (animation.name === "explode") {
@@ -1761,9 +2166,10 @@ var Bomberman;
     var Battle = (function (_super) {
         __extends(Battle, _super);
         function Battle() {
-            _super.apply(this, arguments);
-            this.hasStarted = false;
-            this.timeLimit = 120;
+            var _this = _super !== null && _super.apply(this, arguments) || this;
+            _this.hasStarted = false;
+            _this.timeLimit = 120;
+            return _this;
         }
         Battle.prototype.init = function (config) {
             console.log("INIT Battle");
@@ -1807,11 +2213,6 @@ var Bomberman;
             this.entities = [];
             this.setupMap();
             this.setupPlayers();
-            var m;
-            m = new Bomberman.MonsterBlob(this, new Bomberman.Point(11, 4));
-            this.entities.push(m);
-            m = new Bomberman.MonsterBlue(this, new Bomberman.Point(7, 3));
-            this.entities.push(m);
             Bomberman.Utils.playMusic(this.game.add.audio("music1", .8));
             this.timedEvents = [];
             this.startBattle();
@@ -1819,6 +2220,8 @@ var Bomberman;
         Battle.prototype.update = function () {
             var delta = this.game.time.elapsed / 1000;
             if (this.hasStarted) {
+                this.updateSoftTiles();
+                this.updateDeadEnds();
                 for (var _i = 0, _a = this.entities; _i < _a.length; _i++) {
                     var entity = _a[_i];
                     entity.update(delta);
@@ -1914,6 +2317,31 @@ var Bomberman;
             }
             return entities;
         };
+        Battle.prototype.getDangerPositions = function () {
+            var positions = new Array();
+            for (var _i = 0, _a = this.bombs; _i < _a.length; _i++) {
+                var bomb = _a[_i];
+                positions = _.union(positions, bomb.getDangerPositions());
+            }
+            for (var _b = 0, _c = this.fires; _b < _c.length; _b++) {
+                var fire = _c[_b];
+                positions = _.union(positions, fire.locations);
+            }
+            return positions;
+        };
+        Battle.prototype.getTilesInRange = function (location, size) {
+            var tiles = [];
+            for (var _i = 0, _a = this.baseTiles; _i < _a.length; _i++) {
+                var tile = _a[_i];
+                if (tile.location.x > 0 && tile.location.x > location.x - size &&
+                    tile.location.x < (Bomberman.cfg.tile.width - 1) && tile.location.x < location.x + size &&
+                    tile.location.y > 0 && tile.location.y > location.y - size &&
+                    tile.location.y < (Bomberman.cfg.tile.height - 1) && tile.location.y < location.y + size) {
+                    tiles.push(tile);
+                }
+            }
+            return tiles;
+        };
         Battle.prototype.startBattle = function () {
             var self = this;
             var style = { font: "bold 120px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" };
@@ -1983,6 +2411,143 @@ var Bomberman;
                 }
             }
         };
+        Battle.prototype.updateSoftTiles = function () {
+            var SOFT_WALL_MAX_DEPTH = 2;
+            for (var _i = 0, _a = this.baseTiles; _i < _a.length; _i++) {
+                var tile = _a[_i];
+                var softWallsNear = 0;
+                if (tile.isBlocked()) {
+                    tile.setNearSoftWalls(-1);
+                }
+                else {
+                    for (var direction = 1; direction <= 4; direction++) {
+                        var checkTiles = this.tilesFromCenter(tile.location, direction, SOFT_WALL_MAX_DEPTH);
+                        for (var _b = 0, checkTiles_1 = checkTiles; _b < checkTiles_1.length; _b++) {
+                            var checkTile = checkTiles_1[_b];
+                            var tileType = this.getTileType(checkTile.location);
+                            if (tileType === Bomberman.TileType.Soft) {
+                                softWallsNear++;
+                                break;
+                            }
+                            else if (tileType === Bomberman.TileType.Hard) {
+                                break;
+                            }
+                        }
+                    }
+                    tile.setNearSoftWalls(softWallsNear);
+                }
+            }
+        };
+        Battle.prototype.updateDeadEnds = function () {
+            var currentDeadEnd = 0;
+            var current_tile;
+            for (var _i = 0, _a = this.baseTiles; _i < _a.length; _i++) {
+                var tile = _a[_i];
+                tile.setDeadEnd(-2);
+            }
+            for (var _b = 0, _c = this.baseTiles; _b < _c.length; _b++) {
+                var tile = _c[_b];
+                if (tile.getDeadEnd() === -2) {
+                    if (tile.isOnOuterEdge() || tile.isBlocked()) {
+                        tile.setDeadEnd(-1);
+                    }
+                    else {
+                        var blockedUp = tile.tileUp().isBlocked();
+                        var blockedDown = tile.tileDown().isBlocked();
+                        var blockedLeft = tile.tileLeft().isBlocked();
+                        var blockedRight = tile.tileRight().isBlocked();
+                        if (blockedLeft && blockedUp && blockedDown) {
+                            while (blockedUp && blockedDown && !tile.isBlocked() && tile) {
+                                tile.setDeadEnd(currentDeadEnd);
+                                current_tile = tile;
+                                tile = tile.tileRight();
+                                blockedUp = tile.tileUp().isBlocked();
+                                blockedDown = tile.tileDown().isBlocked();
+                                if (!tile.isBlocked()) {
+                                    current_tile.setDeadEndExit(tile);
+                                }
+                                currentDeadEnd++;
+                            }
+                        }
+                        else if (blockedUp && blockedLeft && blockedRight) {
+                            while (blockedLeft && blockedRight && !tile.isBlocked() && tile) {
+                                tile.setDeadEnd(currentDeadEnd);
+                                current_tile = tile;
+                                tile = tile.tileDown();
+                                blockedLeft = tile.tileLeft().isBlocked();
+                                blockedRight = tile.tileRight().isBlocked();
+                                if (!tile.isBlocked()) {
+                                    current_tile.setDeadEndExit(tile);
+                                }
+                                currentDeadEnd++;
+                            }
+                        }
+                        else if (blockedRight && blockedUp && blockedDown) {
+                            while (blockedUp && blockedDown && !tile.isBlocked() && tile) {
+                                tile.setDeadEnd(currentDeadEnd);
+                                current_tile = tile;
+                                tile = tile.tileRight();
+                                blockedUp = tile.tileUp().isBlocked();
+                                blockedDown = tile.tileDown().isBlocked();
+                                if (!tile.isBlocked()) {
+                                    current_tile.setDeadEndExit(tile);
+                                }
+                                currentDeadEnd++;
+                            }
+                        }
+                        else if (blockedDown && blockedLeft && blockedRight) {
+                            while (blockedLeft && blockedRight && !tile.isBlocked() && tile) {
+                                tile.setDeadEnd(currentDeadEnd);
+                                current_tile = tile;
+                                tile = tile.tileUp();
+                                blockedLeft = tile.tileLeft().isBlocked();
+                                blockedRight = tile.tileRight().isBlocked();
+                                if (!tile.isBlocked()) {
+                                    current_tile.setDeadEndExit(tile);
+                                }
+                                currentDeadEnd++;
+                            }
+                        }
+                        else {
+                            tile.setDeadEnd(-1);
+                        }
+                    }
+                }
+            }
+        };
+        Battle.prototype.tilesFromCenter = function (location, direction, distance) {
+            var addition;
+            var point = new Bomberman.Point(location.x, location.y);
+            var output = [];
+            switch (direction) {
+                case Bomberman.Direction.Up:
+                    addition = new Bomberman.Point(0, -1);
+                    break;
+                case Bomberman.Direction.Down:
+                    addition = new Bomberman.Point(0, 1);
+                    break;
+                case Bomberman.Direction.Left:
+                    addition = new Bomberman.Point(-1, 0);
+                    break;
+                case Bomberman.Direction.Right:
+                    addition = new Bomberman.Point(1, 0);
+                    break;
+            }
+            for (var j = 1; j <= distance; j++) {
+                point = new Bomberman.Point(point.x + addition.x, point.y + addition.y);
+                var tile = this.getBaseTile(point);
+                if (tile) {
+                    output.push(tile);
+                }
+            }
+            return output;
+        };
+        Battle.prototype.addBomb = function (location, strength) {
+            if (strength === void 0) { strength = 2; }
+            var bomb = new Bomberman.Bomb(this, location, null, strength);
+            this.gameView.addChild(bomb.bmp);
+            this.bombs.push(bomb);
+        };
         return Battle;
     }(Phaser.State));
     Bomberman.Battle = Battle;
@@ -1992,7 +2557,7 @@ var Bomberman;
     var Boot = (function (_super) {
         __extends(Boot, _super);
         function Boot() {
-            _super.apply(this, arguments);
+            return _super !== null && _super.apply(this, arguments) || this;
         }
         Boot.prototype.preload = function () { };
         Boot.prototype.create = function () {
@@ -2013,6 +2578,7 @@ var Bomberman;
             this.scale.refresh();
             this.game.stage.smoothed = false;
             this.game.time.advancedTiming = true;
+            this.game.add.plugin(eval("Phaser.Plugin.Debug"));
             this.game.state.start("Preloader", true, false);
         };
         Boot.prototype.onSizeChange = function (e) {
@@ -2046,7 +2612,7 @@ var Bomberman;
     var Loading = (function (_super) {
         __extends(Loading, _super);
         function Loading() {
-            _super.apply(this, arguments);
+            return _super !== null && _super.apply(this, arguments) || this;
         }
         Loading.prototype.create = function () {
             var style = { font: "bold 52px Arial", fill: "#fff", boundsAlignH: "center", boundsAlignV: "middle" };
@@ -2063,7 +2629,7 @@ var Bomberman;
     var Preloader = (function (_super) {
         __extends(Preloader, _super);
         function Preloader() {
-            _super.apply(this, arguments);
+            return _super !== null && _super.apply(this, arguments) || this;
         }
         Preloader.prototype.preload = function () {
             this.progress = this.game.add.text(this.game.world.centerX, this.game.world.centerY - 30, '0%', { fill: 'white' });
@@ -2104,9 +2670,17 @@ var Bomberman;
             this.game.load.start();
         };
         Preloader.prototype.create = function () {
+            this.testSinglePlayerMatch();
+        };
+        Preloader.prototype.startupGame = function () {
             this.game.state.start("TitleScreen", true, false);
+        };
+        Preloader.prototype.testSinglePlayerMatch = function () {
             new Bomberman.UIManager().init(this.game);
             new Bomberman.Match(this.game, Bomberman.GameType.Local);
+        };
+        Preloader.prototype.testSinglePlayerRound = function () {
+            new Bomberman.UIManager().init(this.game);
         };
         Preloader.prototype.fileComplete = function (progress, cacheKey, success, totalLoaded, totalFiles) {
             this.progress.text = progress + "%";
@@ -2123,7 +2697,7 @@ var Bomberman;
     var TitleScreen = (function (_super) {
         __extends(TitleScreen, _super);
         function TitleScreen() {
-            _super.apply(this, arguments);
+            return _super !== null && _super.apply(this, arguments) || this;
         }
         TitleScreen.prototype.create = function () {
             this.game.stage.setBackgroundColor(0x000000);
@@ -2248,6 +2822,161 @@ var Bomberman;
 })(Bomberman || (Bomberman = {}));
 var Bomberman;
 (function (Bomberman) {
+    var Debug = (function () {
+        function Debug(battle) {
+            this.dOldValues = [];
+            this.dValues = [];
+            this.battle = battle;
+            this.game = battle.game;
+            this.debugView = this.game.add.group(this.battle.debugView, "DebugView");
+            this.debugView.x = this.debugView.y = 0;
+        }
+        Debug.prototype.showValue = function (name, value) {
+            if (!Bomberman.cfg.debug.showDebugTable) {
+                return;
+            }
+            var val = { 'name': name, 'value': value };
+            var entry = _.find(this.dValues, { 'name': name });
+            if (entry) {
+                entry['value'] = value;
+            }
+            else {
+                this.dValues.push(val);
+            }
+        };
+        Debug.prototype.renderValues = function () {
+            if (!Bomberman.cfg.debug.showDebugTable) {
+                return;
+            }
+            if (this.dValues !== this.dOldValues) {
+                var str = '<table class="table table-striped" style="table-layout:fixed;"><thead><tr><th noresize>Name</th><th noresize>Value</th></tr></thead><tbody>';
+                for (var _i = 0, _a = this.dValues; _i < _a.length; _i++) {
+                    var value = _a[_i];
+                    str += '<tr><td>' + value['name'] + '</td><td>' + value['value'] + '</td></tr>';
+                }
+                str += '</tbody></table>';
+                $("#info").html(str);
+            }
+            this.dOldValues = this.dValues.slice(0);
+        };
+        Debug.prototype.markTiles = function (tiles, debugTile) {
+            if (debugTile === void 0) { debugTile = Bomberman.DebugTile.Danger; }
+            if (!Bomberman.cfg.debug.showMarkers) {
+                return;
+            }
+            this.clearAll(debugTile);
+            if (tiles) {
+                for (var _i = 0, tiles_3 = tiles; _i < tiles_3.length; _i++) {
+                    var tile = tiles_3[_i];
+                    this.markTile(tile, debugTile);
+                }
+            }
+        };
+        Debug.prototype.markPoints = function (points, debugTile) {
+            if (debugTile === void 0) { debugTile = Bomberman.DebugTile.Danger; }
+            if (!Bomberman.cfg.debug.showMarkers) {
+                return;
+            }
+            var tiles = [];
+            if (points) {
+                for (var _i = 0, points_1 = points; _i < points_1.length; _i++) {
+                    var point = points_1[_i];
+                    tiles.push(this.battle.getBaseTile(point));
+                }
+                this.markTiles(tiles, debugTile);
+            }
+        };
+        Debug.prototype.markArray = function (arr, debugTile) {
+            if (debugTile === void 0) { debugTile = Bomberman.DebugTile.Danger; }
+            if (!Bomberman.cfg.debug.showMarkers) {
+                return;
+            }
+            var tiles = [];
+            for (var _i = 0, arr_1 = arr; _i < arr_1.length; _i++) {
+                var ar = arr_1[_i];
+                tiles.push(this.battle.getBaseTile(new Bomberman.Point(ar[0], ar[1])));
+            }
+            this.markTiles(tiles, debugTile);
+        };
+        Debug.prototype.markTile = function (tile, debugTile, clearPrevious) {
+            if (debugTile === void 0) { debugTile = Bomberman.DebugTile.Danger; }
+            if (clearPrevious === void 0) { clearPrevious = false; }
+            if (!Bomberman.cfg.debug.showMarkers) {
+                return;
+            }
+            var lineColour, offset;
+            switch (debugTile) {
+                case Bomberman.DebugTile.Danger:
+                    lineColour = 0xff0000;
+                    offset = 0;
+                    break;
+                case Bomberman.DebugTile.Movement:
+                    lineColour = 0xFFFF00;
+                    offset = 6;
+                    break;
+                case Bomberman.DebugTile.Path:
+                    lineColour = 0x0099CC;
+                    offset = 12;
+                    break;
+                case Bomberman.DebugTile.Highlight:
+                    lineColour = 0x00CC00;
+                    offset = 18;
+                    break;
+            }
+            if (clearPrevious) {
+                this.clearAll(debugTile);
+            }
+            var graphics = this.game.add.graphics(tile.location.x * Bomberman.cfg.tile.size, tile.location.y * Bomberman.cfg.tile.size, this.debugView);
+            graphics.lineStyle(6, lineColour, .7);
+            graphics.moveTo(0 + offset, 0 + offset);
+            graphics.lineTo(Bomberman.cfg.tile.size - offset, 0 + offset);
+            graphics.lineTo(Bomberman.cfg.tile.size - offset, Bomberman.cfg.tile.size - offset);
+            graphics.lineTo(0 + offset, Bomberman.cfg.tile.size - offset);
+            graphics.lineTo(0 + offset, 0 + offset);
+            graphics.key = "tile-" + debugTile;
+        };
+        Debug.prototype.tileText = function (tile, text) {
+            if (!Bomberman.cfg.debug.showTileValues) {
+                return;
+            }
+            for (var _i = 0, _a = this.debugView.children; _i < _a.length; _i++) {
+                var i = _a[_i];
+                if (i['key'] === "text_" + tile.location.x + "_ " + tile.location.y) {
+                    i['text'] = text;
+                    return;
+                }
+            }
+            ;
+            var txt = this.game.add.text(tile.location.x * Bomberman.cfg.tile.size, tile.location.y * Bomberman.cfg.tile.size, text, { font: "bold 20px Arial", fill: "#000", boundsAlignH: "center", boundsAlignV: "middle" }, this.debugView);
+            txt.setTextBounds(0, 0, Bomberman.cfg.tile.size, Bomberman.cfg.tile.size);
+            txt.stroke = "#ffffff";
+            txt.strokeThickness = 3;
+            txt.key = "text_" + tile.location.x + "_ " + tile.location.y;
+        };
+        Debug.prototype.markPath = function () {
+        };
+        Debug.prototype.clearPath = function () {
+        };
+        Debug.prototype.clearAll = function (debugTile) {
+            if (debugTile === void 0) { debugTile = null; }
+            if (debugTile === null) {
+                this.debugView.removeAll();
+            }
+            else {
+                for (var _i = 0, _a = this.debugView.children; _i < _a.length; _i++) {
+                    var i = _a[_i];
+                    if (i['key'] === "tile-" + debugTile) {
+                        this.debugView.remove(i, true);
+                    }
+                }
+            }
+        };
+        return Debug;
+    }());
+    Bomberman.Debug = Debug;
+})(Bomberman || (Bomberman = {}));
+var Bomberman;
+(function (Bomberman) {
     var Utils = (function () {
         function Utils() {
         }
@@ -2298,6 +3027,19 @@ var Bomberman;
             var seconds = Math.floor(time - minutes * 60);
             var ms = Math.floor(time * 10).toString().slice(-1);
             return ("00" + minutes).slice(-2) + ":" + ("00" + seconds).slice(-2) + "." + ms;
+        };
+        Utils.matrix = function (rows, cols, defaultValue) {
+            var arr = [];
+            for (var i = 0; i < rows; i++) {
+                arr.push([]);
+                arr[i].push(new Array(cols));
+                if (typeof defaultValue !== 'undefined') {
+                    for (var j = 0; j < cols; j++) {
+                        arr[i][j] = defaultValue;
+                    }
+                }
+            }
+            return arr;
         };
         Utils.loadStage = function (battleConfig) {
             switch (battleConfig.stage) {

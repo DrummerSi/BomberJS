@@ -8,8 +8,8 @@ module Bomberman {
 
 	export class Player extends Entity {
 
-		private playerColour = PlayerColour.White;
-		private name: string;
+		protected playerColour = PlayerColour.White;
+		protected name: string;
 
 
 		constructor(battle: Battle, location: Point, colour: PlayerColour) {
@@ -98,6 +98,14 @@ module Bomberman {
 		public die(): void {
 			super.die();			
 			this.redistributeItems();
+		}
+
+		/**
+		 * Returns the number of bombs left that a bomber casn plant
+		 */
+		public bombsLeft(): number {
+			//Amount of bombs we have MINUS amount of bombs we've dropped on battlefield
+			return this.bombQuantity - this.bombs.length;
 		}
 		
 

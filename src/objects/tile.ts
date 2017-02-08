@@ -18,6 +18,10 @@ module Bomberman {
 		public bmp: Phaser.Sprite;
 		public shadow: Phaser.Sprite;
 
+		private nearSoftWalls: number;
+		private deadEnd: number;		//Dead end number: Unique or -1, -2
+		private deadEndExit: Tile;		//Tile we can move to in order to escape the deadEnd
+
 
 		constructor(battle: Battle, name: string, type: TileType, location: Point) {
 			this.battle   = battle;
@@ -124,6 +128,94 @@ module Bomberman {
 				64, 64);
 		}
 
+		/**
+		 * Returns TRUE if this tile is blocked (I.E. Has a wall on it), else FALSE
+		 */
+		public isBlocked() {
+			var type = this.battle.getTileType(this.location);
+			if (type !== TileType.Base) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+
+		/**
+		 * Returns TRUE if this tile contains a bomb
+		 */
+		public isBomb() {
+			let bomb = this.battle.getBomb(this.location);
+			if (bomb) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+
+		/**
+		 * Returns tile above
+		 */
+		public tileUp(): Tile {
+			return this.battle.getBaseTile(new Point(this.location.x, this.location.y - 1));
+		}
+
+		/**
+		 * Returns tile below
+		 */
+		public tileDown(): Tile {
+			return this.battle.getBaseTile(new Point(this.location.x, this.location.y + 1));
+		}
+
+		/**
+		 * Returns tile to left
+		 */
+		public tileLeft(): Tile {
+			return this.battle.getBaseTile(new Point(this.location.x - 1, this.location.y));
+		}
+
+		/**
+		 * Returns tile to right
+		 */
+		public tileRight(): Tile {
+			return this.battle.getBaseTile(new Point(this.location.x + 1, this.location.y));
+		}
+
+		/**
+		 * Returns TRUE if this tile is on the outer edge of the arena
+		 */
+		public isOnOuterEdge():boolean {
+			if (
+				this.location.x === 0 || this.location.x === cfg.tile.width - 1 ||
+				this.location.y === 0 || this.location.y === cfg.tile.height - 1
+			){
+				return true;
+			}
+			return false;
+		}
+
+		public setNearSoftWalls(val) {
+			this.nearSoftWalls = val;
+		}
+
+		public getNearSoftWalls() {
+			return this.nearSoftWalls;
+		}
+
+		public setDeadEnd(val) {
+			this.deadEnd = val;
+		}
+
+		public getDeadEnd() {
+			return this.deadEnd;
+		}
+
+		public setDeadEndExit(tile: Tile):void {
+			this.deadEndExit = tile;
+		}
+
+		public getDeadEndExit(): Tile {
+			return this.deadEndExit;
+		}
 
 
 

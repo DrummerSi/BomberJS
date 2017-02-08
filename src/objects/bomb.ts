@@ -60,7 +60,7 @@ module Bomberman {
 		 */
 		public remove() {
 			this.battle.gameView.remove(this.bmp);
-			Utils.removeFromArray(this.owner.bombs, this);
+			if (this.owner) { Utils.removeFromArray(this.owner.bombs, this); }
 			Utils.removeFromArray(this.battle.bombs, this);
 		}
 
@@ -81,7 +81,7 @@ module Bomberman {
 		/**
 		 * Returns an array of positions which will be affected by this bomb
 		 */
-		private getDangerPositions(checkedBombs:Point[] = []): Point[] {
+		public getDangerPositions(checkedBombs:Point[] = []): Point[] {
 
 			const locations:Array <Point> = new Array();
 			locations.push(this.location);

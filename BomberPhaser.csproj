@@ -10,7 +10,7 @@
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <DebugType>full</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <TypeScriptToolsVersion>1.8</TypeScriptToolsVersion>
+    <TypeScriptToolsVersion>2.1</TypeScriptToolsVersion>
     <UseIISExpress>true</UseIISExpress>
     <IISExpressSSLPort />
     <IISExpressAnonymousAuthentication />
@@ -81,7 +81,7 @@
     <Content Include="build\libs\phaser-debug.js" />
     <Content Include="build\libs\phaser.min.js" />
     <Content Include="build\libs\webfontloader.js" />
-    <Content Include="notes.txt" />
+    <Content Include="changes.txt" />
     <Content Include="web.config" />
   </ItemGroup>
   <ItemGroup>
@@ -91,9 +91,11 @@
     <Content Include="build\assets\fonts\fontawesome-webfont.woff2" />
     <Content Include="build\assets\fonts\FontAwesome.otf" />
     <TypeScriptCompile Include="src\cfg.ts" />
+    <None Include="src\entities\bot.tsNEW" />
+    <TypeScriptCompile Include="src\entities\bot.ts" />
     <TypeScriptCompile Include="src\entities\monster.ts" />
     <TypeScriptCompile Include="src\entities\entity.ts" />
-    <TypeScriptCompile Include="src\entities\bot.ts" />
+    <None Include="src\entities\bot.tsold" />
     <TypeScriptCompile Include="src\entities\monsters\blob.ts" />
     <TypeScriptCompile Include="src\entities\monsters\blue.ts" />
     <TypeScriptCompile Include="src\entities\player.ts" />
@@ -116,6 +118,7 @@
     <TypeScriptCompile Include="src\states\preloader.ts" />
     <TypeScriptCompile Include="src\states\titleScreen.ts" />
     <TypeScriptCompile Include="src\ui\uiManager.ts" />
+    <TypeScriptCompile Include="src\utils\debug.ts" />
     <TypeScriptCompile Include="src\utils\point.ts" />
     <TypeScriptCompile Include="src\utils\utils.ts" />
     <TypeScriptCompile Include="typings\bootbox.d.ts" />

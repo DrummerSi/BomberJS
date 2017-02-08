@@ -1,0 +1,2 @@
+﻿- Stopped player dying when entering a location that a monster previously died at
+- Bombs can now be added to the battle, and NOT assigned to a bomberman

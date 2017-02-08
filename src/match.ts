@@ -57,7 +57,9 @@
 
 			this.battleConfig.players = [
 				<IRoomPlayer>{ key: "1", name: "Player 1", type: EntityType.Local },
-				<IRoomPlayer>{ key: "2", name: "Bot", type: EntityType.Bot },
+				<IRoomPlayer>{ key: "2", name: "Bot 1", type: EntityType.Bot },
+				//<IRoomPlayer>{ key: "3", name: "Bot 2", type: EntityType.Bot },
+				//<IRoomPlayer>{ key: "4", name: "Bot 3", type: EntityType.Bot }
 			];
 
 			//Generate start data
@@ -68,8 +70,7 @@
 
 
 			//Start the game
-			this.game.state.start("Battle", true, false, this.battleConfig);
-			
+			this.game.state.start("Battle", true, false, this.battleConfig);			
 
 		}
 

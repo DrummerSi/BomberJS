@@ -115,12 +115,12 @@ module Bomberman {
 			this.setupPlayers();
 
 			//Test monsters
-			let m;
+			/*let m;
 			m = new MonsterBlob(this, new Point(11, 4));
 			this.entities.push(m);
 
 			m = new MonsterBlue(this, new Point(7, 3));
-			this.entities.push(m);
+			this.entities.push(m);*/
 
 
 
@@ -147,6 +147,12 @@ module Bomberman {
 			let delta = this.game.time.elapsed / 1000;
 
 			if (this.hasStarted) {
+
+				//Map all soft walls and update the tiles to reflect this
+				this.updateSoftTiles();
+
+				//Update a map of deadends
+				this.updateDeadEnds();
 
 				//Update entities
 				for (let entity of this.entities) {
@@ -302,6 +308,44 @@ module Bomberman {
 			return entities;
 		}
 
+		/**
+		 * Returns an array of danger positions for every bomb on the field, as well as existing bomb flames
+		 */
+		public getDangerPositions() {
+
+			let positions = new Array<Point>();
+
+			for (let bomb of this.bombs) {
+				positions = _.union(positions, bomb.getDangerPositions());
+			}
+
+			for (let fire of this.fires) {
+				positions = _.union(positions, fire.locations);
+			}
+
+			return positions;
+		}
+
+		/**
+		 * Returns an array of tiles within a certain range from the location point
+		 */
+		public getTilesInRange(location: Point, size: number) {
+			let tiles: Tile[] = [];
+
+			for (let tile of this.baseTiles) {
+				if (//Within range of location
+					tile.location.x > 0 && tile.location.x > location.x - size &&
+					tile.location.x < (cfg.tile.width-1) && tile.location.x < location.x + size &&
+					tile.location.y > 0 && tile.location.y > location.y - size &&
+					tile.location.y < (cfg.tile.height-1) && tile.location.y < location.y + size
+					)
+				{
+					tiles.push(tile);
+				}
+			}
+			return tiles;
+		}
+
 
 
 		/**
@@ -327,9 +371,9 @@ module Bomberman {
 				self.gameStartTime = self.game.time.totalElapsedSeconds();
 				//self.timeLeft = self.config.timeLimit;
 				self.hasStarted = true;
-
+					//self.addBomb(new Point(13, 10), 5);
 				setTimeout(function () {
-					self.mapText.destroy();
+					self.mapText.destroy();	
 				}, 1000);
 
 			}, 2000);
@@ -425,6 +469,218 @@ module Bomberman {
 		}
 
 
+		/**
+		 * Update the soft tile values (for bot usage)
+		 */
+		private updateSoftTiles() {
+
+			const SOFT_WALL_MAX_DEPTH = 2;
+
+			for (let tile of this.baseTiles) {
+
+				let softWallsNear = 0;
+
+				if (tile.isBlocked()) {
+					tile.setNearSoftWalls(-1);
+				} else {
+
+					//directionLoop:
+					for (let direction = 1; direction <= 4; direction++) {
+						let checkTiles = this.tilesFromCenter(tile.location, direction, SOFT_WALL_MAX_DEPTH);
+
+						for (let checkTile of checkTiles) {
+
+							let tileType = this.getTileType(checkTile.location);
+
+							if (tileType === TileType.Soft) {
+								softWallsNear++;
+								break;// directionLoop;
+							} else if (tileType === TileType.Hard) {
+								break;// directionLoop;
+							}
+						}
+					}
+
+					tile.setNearSoftWalls(softWallsNear);
+
+					/*directionLoop:
+					for (let direction = 1; direction <= 4; direction++) {
+						let tiles = this.tilesFromCenter(tile.location, direction, SOFT_WALL_MAX_DEPTH);
+						for (let tile of tiles) {
+							if()
+
+							let cell = this.getTile(tile.location);
+							if (cell) {
+								if (cell.type === TileType.Soft) {
+									softWallsNear++;
+								} else if (cell.type === TileType.Hard || this.getItem(cell.location)) {;
+									break directionLoop;
+								}
+							}
+						}
+					}*/
+
+				}
+
+			}
+
+		}
+
+
+		/**
+		 * Update the dead end values (for bot usage)
+		 */
+		private updateDeadEnds() {
+
+			let currentDeadEnd = 0;
+			let current_tile: Tile;
+
+			//Reset all tile deadEnd values
+			for (let tile of this.baseTiles) {
+				tile.setDeadEnd(-2);
+			}
+
+			//Scan each tile and record deadends
+			for (let tile of this.baseTiles) {
+				if (tile.getDeadEnd() === -2) {
+
+					if (tile.isOnOuterEdge() || tile.isBlocked()) {
+						//Outer edge of arena or tile blocked (wall/ bomb)
+						tile.setDeadEnd(-1);
+					} else {
+
+						let blockedUp = tile.tileUp().isBlocked();
+						let blockedDown = tile.tileDown().isBlocked();
+						let blockedLeft = tile.tileLeft().isBlocked();
+						let blockedRight = tile.tileRight().isBlocked();
+
+						if (blockedLeft && blockedUp && blockedDown) {
+							//Deadend, entrance on right
+							while (blockedUp && blockedDown && !tile.isBlocked() && tile) {
+								tile.setDeadEnd(currentDeadEnd);
+
+								//Scan to the right
+								current_tile = tile;
+								tile = tile.tileRight();
+
+								//try {
+								blockedUp = tile.tileUp().isBlocked();
+								blockedDown = tile.tileDown().isBlocked();
+								//} catch (e) { }
+
+								if (!tile.isBlocked()) {
+									current_tile.setDeadEndExit(tile);
+								}
+								currentDeadEnd++;
+							}
+						} else if (blockedUp && blockedLeft && blockedRight) {
+							//Deadend, entrance below
+							while (blockedLeft && blockedRight && !tile.isBlocked() && tile) {
+								tile.setDeadEnd(currentDeadEnd);
+
+								//Scan below
+								current_tile = tile;
+								tile = tile.tileDown();
+
+								//try {
+								blockedLeft = tile.tileLeft().isBlocked();
+								blockedRight = tile.tileRight().isBlocked();
+								//} catch (e) { }
+
+								if (!tile.isBlocked()) {
+									current_tile.setDeadEndExit(tile);
+								}
+								currentDeadEnd++;
+							}
+						} else if (blockedRight && blockedUp && blockedDown) {
+							//Deadend, entrance on left
+							while (blockedUp && blockedDown && !tile.isBlocked() && tile) {
+								tile.setDeadEnd(currentDeadEnd);
+
+								//Scan to the right
+								current_tile = tile;
+								tile = tile.tileRight();
+
+								//try {
+								blockedUp = tile.tileUp().isBlocked();
+								blockedDown = tile.tileDown().isBlocked();
+								//} catch (e) { }
+
+								if (!tile.isBlocked()) {
+									current_tile.setDeadEndExit(tile);
+								}
+								currentDeadEnd++;
+							}
+						} else if (blockedDown && blockedLeft && blockedRight) {
+							//Deadend, entrance on left
+							while (blockedLeft && blockedRight && !tile.isBlocked() && tile) {
+								tile.setDeadEnd(currentDeadEnd);
+
+								//Scan above
+								current_tile = tile;
+								tile = tile.tileUp();
+
+								//try {
+								blockedLeft = tile.tileLeft().isBlocked();
+								blockedRight = tile.tileRight().isBlocked();
+								//} catch (e) { }
+
+								if (!tile.isBlocked()) {
+									current_tile.setDeadEndExit(tile);
+								}
+								currentDeadEnd++;
+							}
+						} else {
+							tile.setDeadEnd(-1);
+						}
+
+
+					}
+
+				}
+			}
+
+		}
+
+
+
+		private tilesFromCenter(location: Point, direction: Direction, distance: number): Tile[] {
+
+			let addition: Point;
+			let point = new Point(location.x, location.y);
+			let output: Tile[] = [];
+
+			switch (direction) {
+				case Direction.Up:
+					addition = new Point(0, -1); break;
+				case Direction.Down:
+					addition = new Point(0, 1); break;
+				case Direction.Left:
+					addition = new Point(-1, 0); break;
+				case Direction.Right:
+					addition = new Point(1, 0); break;
+			}
+
+			for (let j = 1; j <= distance; j++) {
+				point = new Point(point.x + addition.x, point.y + addition.y);
+				let tile = this.getBaseTile(point);
+				if (tile) {
+					output.push(tile);
+				}
+			}
+
+			return output;
+		}
+
+
+		/**
+		 * Adds a bomb to the battle - Not assigned to any bomber
+		 */
+		private addBomb(location: Point, strength:number = 2):void {
+			let bomb = new Bomb(this, location, null, strength);
+			this.gameView.addChild(bomb.bmp);
+			this.bombs.push(bomb);
+		}
 
 
 	}

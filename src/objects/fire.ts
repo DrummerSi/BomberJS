@@ -68,7 +68,9 @@ module Bomberman {
 
 						//Hide the bomb and allow the user to replant it
 						bomb.bmp.visible = false;
-						Utils.removeFromArray(this.bomb.owner.bombs, this.bomb);
+						if (this.bomb.owner) {
+							Utils.removeFromArray(this.bomb.owner.bombs, this.bomb);
+						}
 		
 					} else {
 
@@ -119,6 +121,7 @@ module Bomberman {
 					//Play the animation
 					bmp.events.onAnimationComplete.add(this.remove, this, 0, { bmp: bmp });
 					bmp.animations.play(anim, 10);
+					//bmp.animations.play(anim, 2);
 
 					const pixels = Utils.convertToBitmapPosition(location);
 					bmp.x = pixels.x;

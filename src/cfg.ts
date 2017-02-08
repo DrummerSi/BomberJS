@@ -22,9 +22,14 @@
 			strength: 15,
 			speed: 10
 		},
+		debug: {
+			showDebugTable: false, //true,
+			showMarkers: false, //true,
+			showTileValues: false, //true
+		},
 
 		muteMusic: true,
-		muteSound: false
+		muteSound: true
 
 	}
 

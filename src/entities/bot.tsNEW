@@ -1,0 +1,776 @@
+﻿/// <reference path="player.ts" />
+/// <reference path="../../typings/pathfinding.d.ts" />
+
+module Bomberman {
+
+	/*************************************************************
+	 * AI Bot class
+	 *************************************************************/
+
+
+	export class Bot extends Player {
+
+		private AI_VIEW_SIZE: number = 6;
+
+		private BURN_MARK = [
+			[0, 0, 0, 0, 0, 0],
+			[10, 8, 5, 3, 2, 1],
+			[20, 17, 15, 12, 10, 5],
+			[30, 26, 24, 22, 5, 10]
+		];
+
+		private stopTimeLeft: number;
+		private moveTimeLeft: number;
+		private botMode: BotMode;
+
+		private blockWalk: number;
+
+		private itemGoal: Point;
+		private itemDropBomb: boolean;
+
+		private walkTime: number;
+
+		//Pathfinding matrix
+		private matrix: Array<Array<number>>;
+		private grid: PF.Grid;
+
+		private debug: Debug;
+
+
+
+		constructor(battle: Battle, location: Point, colour: PlayerColour) {
+			super(battle, location, colour);
+
+			//Set entity to BOT
+			this.entityType = EntityType.Bot;
+
+			//Pause at start of match
+			this.stopTimeLeft = 0.5;
+
+			//Reset commands
+			this.move = Move.None;
+			this.action = Action.None;
+			this.moveTimeLeft = 0;
+			this.blockWalk = 0;
+
+			//Init the matrix
+			this.matrix = Utils.matrix(cfg.tile.height, cfg.tile.width, 0);
+			this.updatePathMatrix();
+
+			//Init debug
+			this.debug = new Debug(this.battle);
+			let tiles = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+			//this.debug.markTiles(tiles);
+			//console.log(this.debug);
+
+			this.setBotMode(BotMode.Think);
+			
+			//this.speed = 150;
+					
+
+		}
+
+
+		public update(delta: number): void {
+
+			//Update debug values
+			this.debug.showValue("delta", delta);
+			this.debug.showValue("moveTimeLeft", this.moveTimeLeft.toFixed(5));
+			this.debug.showValue("stopTimeLeft", this.stopTimeLeft.toFixed(5));
+			this.debug.showValue("itemDropBomb", this.itemDropBomb);
+			this.debug.renderValues();
+
+			if (!this.isAlive()) {
+				return;
+			}
+
+			if (this.stopTimeLeft <= 0) {
+				this.debug.showValue("stopTimeLeft_done", Math.random().toFixed(5));
+
+				if (this.moveTimeLeft <= 0) {
+					this.blockWalk++;
+					this.updatePathMatrix();
+
+					if (this.botMode === BotMode.Think) {
+						this.modeThink();
+					}
+
+					//Update the bot according to the mode it's in
+					switch (this.botMode) {
+						case BotMode.Item:
+							this.debug.showValue("mode", "Item");
+							this.modeItem(delta); break;
+						case BotMode.Attack:
+							this.debug.showValue("mode", "Attack");
+							this.modeAttack(); break;
+						case BotMode.Defend:
+							this.debug.showValue("mode", "Defend");
+							this.modeDefend(delta); break;
+						case BotMode.Walk:
+							this.debug.showValue("mode", "Walk");
+							this.modeWalk(delta); break;
+					}
+
+					//TODO: {HERE}
+					
+				}
+				this.processMovement(this.move, delta);
+				this.processAction();
+				this.moveTimeLeft -= delta;
+
+			} else {
+				this.processMovement(Move.None, delta);
+				this.processAction();
+				this.stopTimeLeft -= delta;
+			}
+
+		}
+
+
+
+		private setBotMode(mode: BotMode) :void {
+
+			//If we're thinking of switching modes, stop and pause;
+			if (mode == BotMode.Think) {
+				switch (this.botMode) {
+					case BotMode.Item:		this.stopTimeLeft = .08 + Utils.randomNumber(40) / 1000; break;
+					case BotMode.Attack:	this.stopTimeLeft = .20 + Utils.randomNumber(40) / 1000; break;
+					case BotMode.Defend:	this.stopTimeLeft = .12 + Utils.randomNumber(40) / 1000; break;
+					case BotMode.Walk:		this.stopTimeLeft = .22 + Utils.randomNumber(40) / 1000; break;
+				}
+			}
+
+			console.log("Set mode: " + mode)
+			this.botMode = mode;
+		}
+
+
+
+		private updatePathMatrix() :void {
+			for (let tile of this.battle.baseTiles) {
+				if ((tile.isBlocked() || tile.isBomb()) && !tile.location.equalTo(this.location)) {
+					this.matrix[tile.location.y][tile.location.x] = 1;
+				} else {
+					this.matrix[tile.location.y][tile.location.x] = 0;
+				}
+			}
+			this.grid = new PF.Grid(this.matrix);
+		}
+
+
+
+		private modeThink(): void {
+
+			let dangerPositions = this.battle.getDangerPositions();
+			this.debug.markPoints(dangerPositions);
+
+			//____________________________________________________________________________________________
+			//DEFEND CHECK
+			//If the block is dangerous or there's not many blocks left in the arena (TODO)
+			if (_.some(dangerPositions, this.location)) {
+				this.setBotMode(BotMode.Defend);
+				return;
+			}
+
+
+			//____________________________________________________________________________________________
+			//ATTACK CHECK
+			//Should we attack? If there is an enemy near and in front of the bomber.. do it
+			if (this.enemyNearAndFront() &&
+			this.dropBombOK(this.location) &&
+			Utils.randomNumber(100) < 70) {
+				this.setBotMode(BotMode.Attack);
+				return;
+			}
+
+
+			//____________________________________________________________________________________________
+			//ITEM CHECK
+			//Check if there is a cool item to pick up..
+			let foundItem = false;
+			let bestMark = 0;
+			let bestGoal: Tile;
+
+			let tiles = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+
+			//Check each tile in range for loot			
+			for (let tile of tiles) {
+				let mark = this.getItemMark(tile);
+				if (mark > 0 && (mark > bestMark || (mark === bestMark && Utils.randomNumber(100) >= 50))) {
+					foundItem = true;
+					bestGoal = tile;
+					bestMark = mark;
+				}
+			}
+
+
+			if (foundItem) {
+				this.itemGoal = bestGoal.location;
+				this.debug.showValue("Goal", this.itemGoal.x + ", " + this.itemGoal.y);
+				this.itemDropBomb = false;
+				this.setBotMode(BotMode.Item);
+				return;
+			}
+
+			//TODO: Sickness: Line: 867
+
+			//TODO: SoftWallBurn: Line: 897
+
+			//Find the tile close to the highest numbre of soft walls
+			bestMark = 0;
+			bestGoal = this.battle.getBaseTile(this.location);
+
+			for (let tile of tiles) {
+				if (
+					tile.getNearSoftWalls() > 0 &&
+					this.findPathLength(tile.location) > 0 &&
+					//TODO: Check for deadend -- (baseTile.deadEnd > 0 || !this.enemyNear(blockX, blockY)) &&
+					!_.some(dangerPositions, tile.location) &&
+					this.dropBombOK(tile.location)
+				) {
+
+					//We've found a valid tile... Is it the best to bomb?
+					console.log(tile.getNearSoftWalls(),this.findPathLength(tile.location));
+					if (
+						bestMark < this.BURN_MARK[tile.getNearSoftWalls()][this.findPathLength(tile.location)] ||
+						(bestMark === this.BURN_MARK[tile.getNearSoftWalls()][this.findPathLength(tile.location)] && Utils.randomNumber(100) >= 50)
+					) {
+						bestGoal = tile;
+						bestMark = this.BURN_MARK[tile.getNearSoftWalls()][this.findPathLength(tile.location)]
+					}
+
+				}
+			}
+
+
+			if (bestMark > 0) {
+				this.itemGoal = bestGoal.location;
+				this.debug.showValue("Goal", this.itemGoal.x + ", " + this.itemGoal.y);
+				this.itemDropBomb = true;
+				this.setBotMode(BotMode.Item);
+				return;
+			}
+
+
+			//Nothing better to do than wolk in a random direction
+			this.setBotMode(BotMode.Walk);
+			this.walkTime = 0;
+
+		}
+
+
+
+		private modeItem(delta: number) {
+
+			//Reset bot comamnds
+			this.move = Move.None;
+			this.action = Action.None;
+			
+
+			if ((
+				this.enemyNearAndFront() &&
+				this.dropBombOK(this.location) &&
+				Utils.randomNumber(100) < 70
+			) || (
+				this.itemDropBomb &&
+				!this.dropBombOK(this.itemGoal)
+			)) {
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+			//If we're trying to pick up an item
+			if (this.battle.getItem(this.itemGoal)) {
+
+				let foundItem = false;
+				let bestMark = 0;
+
+				let tiles = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+				for (let tile of tiles) {
+					let mark = this.getItemMark(tile);
+
+					if (mark > 0 && mark > bestMark) {
+						foundItem = true;
+						this.itemGoal = tile.location;
+						bestMark = mark;
+					}
+				}
+
+				if (foundItem && bestMark === 0) {
+					//What do we do next?
+					this.setBotMode(BotMode.Think);
+					return;
+				}
+
+			}
+
+			//Assume the goal has not been reached
+			let goalReached = false;
+
+			if (this.findPathLength(this.itemGoal) >= 0) {
+				goalReached = this.goto(this.itemGoal);
+			} else {
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+			this.debug.showValue("goalReached", goalReached);
+			this.debug.showValue("bombNo", this.bombQuantity - this.bombs.length);
+
+			if (goalReached && this.itemDropBomb && this.bombQuantity - this.bombs.length > 0) {
+				this.action = Action.Bomb;
+				this.itemGoal = this.location;
+
+				this.itemDropBomb = false;
+
+			} else if (goalReached && !this.itemDropBomb) {
+				this.setBotMode(BotMode.Think);
+			}
+
+		}
+
+
+		private modeAttack() {
+			this.move = Move.None;
+			this.action = Action.Bomb;
+			this.setBotMode(BotMode.Think);
+		}
+
+
+		private modeDefend(delta: number) {
+
+			let dangerPositions = this.battle.getDangerPositions();
+			this.debug.markPoints(dangerPositions);
+
+			if (!_.some(dangerPositions, this.location) /* TODO: Check theres enough free tiles */){
+				this.move = Move.None;
+				this.action = Action.None;
+
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+			let found = false;
+
+			let bestBlock: Point;
+			let bestDistance: number = 999;
+
+			let tiles = this.battle.getTilesInRange(this.location, this.AI_VIEW_SIZE);
+			for (let tile of tiles) {
+
+				if (
+					this.findPathLength(tile.location) !== -1 &&
+					//TODO: Check deadends
+					!_.some(dangerPositions, tile.location) &&
+					//TODO: Check for skull items
+					(
+						this.findPathLength(tile.location) < bestDistance ||
+						(this.findPathLength(tile.location) === bestDistance && Utils.randomNumber(100) >= 50)
+					)
+				){
+					found = true;
+					bestBlock = tile.location;
+					bestDistance = this.findPathLength(tile.location);
+					//TODO: deadEnd = ???
+				}
+
+			}
+
+			// TODO: LIne 1327 -- BestDangerTimeLeft
+
+
+			if (found) {
+				console.log("FOUND SPOT");
+				this.goto(bestBlock);
+			} else {
+				console.log("SPOT NOT FOUND");
+				this.move = Move.None;
+				this.moveTimeLeft = 0;
+			}
+
+		}
+
+
+		private modeWalk(delta: number) {
+
+			this.action = Action.None;
+
+			let dangerPositions = this.battle.getDangerPositions();
+			this.debug.markPoints(dangerPositions);
+
+			if (_.some(dangerPositions, this.location)) {
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+			if (this.enemyNearAndFront() && this.dropBombOK(this.location)) {
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+			if (this.walkTime >= 1) {
+				this.setBotMode(BotMode.Think);
+				return;
+			}
+
+
+			let mark:number[] = [0,0,0,0,0];
+
+			for (let tile of this.battle.baseTiles) {
+				if (tile.location.equalTo(this.location)) {
+					continue;
+				}
+
+				let score = 0;
+				if (this.battle.getTileType(tile.location) == TileType.Soft) {
+					score = 2;
+				} else if (this.battle.getItem(tile.location) /* -- TODO: Check if item is NOT a skull */) {
+					score = 10;
+				} else if (this.battle.getEntity(tile.location)) {
+					score = 5;
+				}
+
+				if (this.location.difference(tile.location).x > 0) {
+					mark[Direction.Right] += score;
+				} else {
+					mark[Direction.Left] += score;
+				}
+
+				if (this.location.difference(tile.location).y > 0) {
+					mark[Direction.Down] += score;
+				} else {
+					mark[Direction.Up] += score;
+				}
+			}
+
+			if (_.reduce(mark, function (j, k) { return j + k; },0) == 0 ){
+				return;
+			}
+
+			let canMoveUp = this.findPathLength(this.location.moveDirection(Direction.Up)) > 0;
+			let canMoveDown = this.findPathLength(this.location.moveDirection(Direction.Down)) > 0;
+			let canMoveLeft = this.findPathLength(this.location.moveDirection(Direction.Left)) > 0;
+			let canMoveRight = this.findPathLength(this.location.moveDirection(Direction.Right)) > 0;
+
+			let dangerUp = _.some(dangerPositions, this.location.moveDirection(Direction.Up));
+			let dangerDown = _.some(dangerPositions, this.location.moveDirection(Direction.Down));
+			let dangerLeft = _.some(dangerPositions, this.location.moveDirection(Direction.Left));
+			let dangerRight = _.some(dangerPositions, this.location.moveDirection(Direction.Right));
+
+			let markDownRight = mark[Direction.Down] + mark[Direction.Right];
+			let markDownLeft = mark[Direction.Down] + mark[Direction.Left];
+			let markUpRight = mark[Direction.Up] + mark[Direction.Right];
+			let markUpLeft = mark[Direction.Up] + mark[Direction.Left];
+
+
+			// TODO: Rewrite this shit
+			if (markDownRight >= markDownLeft &&
+				markDownRight >= markUpLeft &&
+				markDownRight >= markUpRight) {
+				if (Utils.randomNumber(100) >= 50) {
+					if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else this.move = Move.None;
+				} else {
+					if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else this.move = Move.None;
+				}
+
+			} else if (markDownLeft >= markDownRight &&
+				markDownLeft >= markUpLeft &&
+				markDownLeft >= markUpRight) {
+				if (Utils.randomNumber(100) >= 50) {
+					if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else this.move = Move.None;
+				} else {
+					if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else this.move = Move.None;
+				}
+
+			} else if (markUpLeft >= markDownRight &&
+				markUpLeft >= markDownLeft &&
+				markUpLeft >= markUpRight) {
+				if (Utils.randomNumber(100) >= 50) {
+					if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else this.move = Move.None;
+				} else {
+					if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else this.move = Move.None;
+				}
+			} else {
+				if (Utils.randomNumber(100) >= 50) {
+					if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else this.move = Move.None;
+				} else {
+					if (!dangerRight && this.move !== Move.Left && canMoveRight) { this.move = Move.Right }
+					else if (!dangerUp && this.move !== Move.Down && canMoveUp) { this.move = Move.Up }
+					else if (!dangerLeft && this.move !== Move.Right && canMoveLeft) { this.move = Move.Left }
+					else if (!dangerDown && this.move !== Move.Up && canMoveDown) { this.move = Move.Down }
+					else this.move = Move.None;
+				}
+			}
+
+			if (this.move !== Move.None) {
+				this.moveTimeLeft = cfg.tile.size / this.speed;
+			} else {
+				this.moveTimeLeft = 0;
+			}
+
+			this.walkTime += delta;
+
+		}
+
+
+		private goto(location: Point) :boolean {
+
+			//TODO: Needs a full test
+			if (this.location === location || this.findPathLength(location) < 1) {
+				this.move = Move.None;
+			} else {
+
+				let path = this.findPath(this.location, location);
+				let step = path[1];
+
+				this.debug.markArray(path, DebugTile.Movement);
+
+				if (step[0] < this.location.x) {
+					this.move = Move.Left
+				} else if (step[0] > this.location.x) {
+					this.move = Move.Right;
+				} else if (step[1] < this.location.y) {
+					this.move = Move.Up
+				} else if (step[1] > this.location.y) {
+					this.move = Move.Down;
+				}
+
+				//TODO: Check danger time on blocks (Line: 1847)
+
+			}
+
+			if (this.move !== Move.None) {
+				this.moveTimeLeft = cfg.tile.size / this.speed;
+			} else {
+				this.moveTimeLeft = 0;
+			}
+
+			//Return wether the bomber is on the goal tile or not
+			return this.location.equalTo(this.itemGoal);
+
+		}
+
+
+		private getItemMark(tile: Tile): number {
+
+			let pathLength = this.findPathLength(tile.location);
+
+			//IF there is NO item on tsted block
+			//or is this item is a SKULL item (todo)
+			//or if this item is burning (todo)			
+			//or the bomber has no access to it
+			//or if this item will soon be destroyed (todo)
+			//or if the item is in danger and our bomber is too far away to reach it
+			if (
+				!this.battle.getItem(tile.location) ||
+				//this.battle.getSkullItem(tile.location) ||
+				//this.battle.isBurning(tile.location) ||
+				pathLength < 0 ||
+				//dangertimeleft
+				(_.some(this.battle.getDangerPositions(), tile.location) && pathLength >= 3)
+			) {
+				//We're not interested in this item
+				return 0;
+			}
+
+			let mark = 0;
+			let itemType = ItemType.None;
+
+			let item = this.battle.getItem(tile.location);
+			if (!item) {
+				//We found nothing... Exit
+				return 0;
+			}
+
+
+			//We found an item on the specified tile
+			itemType = item.type;
+
+			//According to the item type, modify the current item mark
+			switch (itemType) {
+				case ItemType.BombUp: mark += 10; break;
+				case ItemType.FireUp: mark += 10; break;
+				//TODO: Other items need adding here over time
+			}
+
+			//Alter mark score based on other details
+
+			//If the item is near, it's more interesting
+			if (pathLength <= 3) {
+				mark += 5; //very near
+			} else if (pathLength <= 6) {
+				mark += 3; //quite near
+			}
+
+			//TODO: If NOT in dead end (line: 696)
+
+
+			return mark;
+
+		}
+
+
+
+		private enemyNearAndFront(): boolean {
+
+			//If there's a bomb at this location, exit
+			if (this.battle.getBomb(this.location)){
+				return false;
+			}
+
+			//Check for entities on top of us
+			let entities = this.battle.getEntities(this.location);
+			if (entities.length > 1) {
+				for (let entity of entities) {
+					if (entity !== this && entity.isAlive()) {
+						return true;
+					}
+				}
+			}
+
+			//Check each direction
+			const MAX_NEAR_DISTANCE = 3;
+
+			let checkLocation = this.location;
+			let tiles: Tile[];
+
+			//Loops through each directions, and checks if there's any enemies directly in front
+			for (let direction = 1; direction <= 4; direction++) {
+				tiles = this.tilesFromCenter(this.location, direction, MAX_NEAR_DISTANCE);
+				for (let tile of tiles) {
+					if (tile.isBlocked || tile.isBomb) {
+						break; //Exit loop if tile is blocked
+					}
+					if (this.battle.getEntity(tile.location)) {
+						return true; //Return true if we found another entity (human/ bot/ monster)
+					}
+				}
+			}
+			return false;
+
+		}
+
+
+		private dropBombOK(location: Point): boolean {
+
+			//Make sure the location is accessible
+			if (this.findPathLength(location) < 0) {
+				return false;
+			}
+
+			//TODO: Check if tiles left in arena < 15
+
+			//make sure there's not already a bomb on the tile
+			if (this.battle.getBomb(location)){
+				return false;
+			}
+
+			//Check to make sure we're not in danger by placing the bomb
+			let dangerPositions = this.battle.getDangerPositions();
+			this.debug.markPoints(dangerPositions);
+			if (!_.some(dangerPositions, location)) {
+				//We're not in danger...
+
+				const tile = this.battle.getBaseTile(location);
+
+				//if we detect danger all around though, return false
+				if ( //TODO: Needs a full testing
+					(!tile.tileLeft()	|| _.some(dangerPositions, tile.tileLeft().location)) &&
+					(!tile.tileRight()	|| _.some(dangerPositions, tile.tileRight().location)) &&
+					(!tile.tileUp()		|| _.some(dangerPositions, tile.tileUp().location)) &&
+					(!tile.tileDown()	|| _.some(dangerPositions, tile.tileDown().location))
+				) {
+					return false;
+				}
+			};
+
+			//Make a rought estimation of our flame size to appear more human
+			let flameSize = this.bombStrength; //Exact size
+			if (flameSize > 4) {
+				switch (flameSize) {
+					case 4: flameSize = 5; break;
+					case 5: flameSize = 7; break;
+					case 6: flameSize = 8; break;
+					default: flameSize = 99;
+				}
+			}
+
+			//TODO: Do fire length check (line: 445)
+			return true;
+
+
+		}
+
+
+		private tilesFromCenter(location: Point, direction: Direction, distance: number): Tile[] {
+
+			let addition: Point;
+			let point = new Point(location.x, location.y);
+			let output: Tile[] = [];
+
+			switch(direction){
+				case Direction.Up:
+					addition = new Point(0, -1); break;
+				case Direction.Down:
+					addition = new Point(0, 1); break;
+				case Direction.Left:
+					addition = new Point(-1, 0); break;
+				case Direction.Right:
+					addition = new Point(1, 0); break;
+			}
+
+			for (let j = 1; j <= distance; j++){
+				point = new Point(point.x + addition.x, point.y + addition.y);
+				let tile = this.battle.getBaseTile(point);
+				if (tile) {
+					output.push(tile);
+				}
+			}
+
+			return output;
+		}
+
+		private findPath(source: Point, destination: Point): number[][] {
+			let grid = this.grid.clone();
+			let finder = new PF.AStarFinder({
+				weight: 10 //Not sure what this does exactly, other than speed up the process
+			});
+			return finder.findPath(source.x, source.y, destination.x, destination.y, grid);
+		}
+
+		private findPathLength(location: Point): number {
+			let path = this.findPath(this.location, location);
+			return path.length - 1;
+		}
+
+	}
+
+}
